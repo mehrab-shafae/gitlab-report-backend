@@ -2,13 +2,24 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import 'dotenv/config';
+// --- Load .env robustly (override any existing envs) ---
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env'), override: true });
+// --------------------------------------------------------
 
 const app = express();
 
+
+// -----------------------------------------------
+
+
 // ===== Config =====
 const PORT = process.env.PORT || 3001;
-const ALLOW_ORIGINS = (process.env.ALLOW_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+const ALLOW_ORIGINS = (process.env.ALLOW_ORIGINS || 'http://localhost:5173,http://localhost:3001')
   .split(',').map(s => s.trim()).filter(Boolean);
 const GITLAB_BASE = (process.env.GITLAB_BASE || 'https://gitlab.com/api/v4').replace(/\/$/, '');
 const GITLAB_TOKEN = process.env.GITLAB_TOKEN; // PAT or OAuth service token
@@ -130,7 +141,15 @@ app.all('/api/gitlab/*', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`GitLab proxy (logging) listening on :${PORT}`);
-  console.log('Config:', { PORT, GITLAB_BASE, ALLOW_ORIGINS, UPSTREAM_TIMEOUT_MS, LOG_BODY });
+
+app.listen(process.env.PORT || 3001, '0.0.0.0', () => {
+  console.log('Listening on 0.0.0.0:' + (process.env.PORT || 3001));
+  console.log('Config:', {
+    GITLAB_BASE: process.env.GITLAB_BASE,
+    hasToken: Boolean(process.env.GITLAB_TOKEN),
+    LOG_BODY: String(process.env.LOG_BODY)
+  });
+  if (!process.env.GITLAB_BASE || /gitlab\.com\/api\/v4/i.test(process.env.GITLAB_BASE)) {
+    console.warn('[WARN] GITLAB_BASE looks wrong:', process.env.GITLAB_BASE);
+  }
 });
