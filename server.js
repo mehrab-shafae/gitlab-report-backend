@@ -14,9 +14,6 @@ dotenv.config({ path: path.join(__dirname, '.env'), override: true });
 const app = express();
 
 
-// -----------------------------------------------
-
-
 // ===== Config =====
 const PORT = process.env.PORT || 3001;
 const ALLOW_ORIGINS = (process.env.ALLOW_ORIGINS || 'http://localhost:5173,http://localhost:3001')
