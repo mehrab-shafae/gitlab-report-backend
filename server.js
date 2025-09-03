@@ -54,7 +54,7 @@ app.use((req, _res, next) => {
 // }));
 // app.options(['http://localhost:5174'], cors());
   app.use(cors({
-      origin : ['http://localhost:5174' ] ,
+      origin : ['http://localhost:5174' , 'https://gitlabreport.forvestlab.ir' ] ,
       credentials : true ,
   }));
 
