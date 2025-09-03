@@ -43,16 +43,21 @@ app.use((req, _res, next) => {
 });
 
 // Controlled CORS
-app.use(cors({
-  origin(origin, cb) {
-    if (!origin || ALLOW_ORIGINS.includes(origin)) return cb(null, true);
-    return cb(new Error('Origin not allowed by CORS'), false);
-  },
-  credentials: true,
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','Private-Token'],
-}));
-app.options('*', cors());
+// app.use(cors({
+//   origin(origin, cb) {
+//     if (!origin || ALLOW_ORIGINS.includes(origin)) return cb(null, true);
+//     return cb(new Error('Origin not allowed by CORS'), false);
+//   },
+//   credentials: true,
+//   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+//   allowedHeaders: ['Content-Type','Authorization','Private-Token'],
+// }));
+// app.options(['http://localhost:5174'], cors());
+  app.use(cors({
+      origin : ['http://localhost:5174' ] ,
+      credentials : true ,
+  }));
+
 
 // Health check
 app.get('/healthz', (req, res) => res.json({ ok: true }));
