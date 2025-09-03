@@ -1,0 +1,14 @@
+[Unit]
+Description=GitLab Report Backend
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/gitlabreport/backend.env
+WorkingDirectory=/opt/gitlabreport-backend
+ExecStart=/usr/bin/node server.js
+Restart=always
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
