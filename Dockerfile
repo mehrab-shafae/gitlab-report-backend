@@ -10,4 +10,4 @@ COPY server.js ./
 
 ENV NODE_ENV=production
 
-CMD ["node", "server.js"]
+CMD ["node", "src/index.js"]
