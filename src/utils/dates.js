@@ -1,0 +1,13 @@
+export function subtractWorkingDays(dayjsInstance, workingDays) {
+	let daysToSubtract = Number(workingDays) || 0;
+	let cursor = dayjsInstance;
+	while (daysToSubtract > 0) {
+		cursor = cursor.subtract(1, 'day');
+		const day = cursor.day();
+		if (day !== 0 && day !== 6) {
+			daysToSubtract -= 1;
+		}
+	}
+	return cursor;
+} 
+

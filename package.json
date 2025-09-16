@@ -1,20 +1,31 @@
 {
-  "name": "gitlab-proxy-node-logging",
+  "name": "gitlab-milestones-api",
   "version": "1.0.0",
-  "description": "Node/Express proxy for GitLab API with verbose logging for testing",
+  "description": "Backend API for GitLab Milestones reporting with Swagger",
+  "main": "src/index.js",
   "type": "module",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
   },
+  "keywords": [
+    "gitlab",
+    "milestones",
+    "express",
+    "swagger"
+  ],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
+    "axios": "^1.7.7",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.6.1",
     "express": "^4.19.2",
-    "morgan": "^1.10.0"
+    "mongoose": "^8.18.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
-  "engines": {
-    "node": ">=18.0.0"
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
 }

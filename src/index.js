@@ -1,0 +1,719 @@
+import dotenv from 'dotenv';
+import express from 'express';
+import mongoose from 'mongoose';
+
+dotenv.config();
+const app = express();
+
+// Parse JSON bodies
+app.use(express.json());
+
+// MongoDB connection
+const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
+mongoose.connect(mongoUri, { dbName: process.env.MONGODB_DB || 'forvest_git' })
+  .then(() => console.log('MongoDB connected'))
+  .catch((err) => console.error('MongoDB connection error:', err.message));
+
+// User schema/model
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, trim: true },
+  password: { type: String, required: true },
+}, { timestamps: true });
+
+const User = mongoose.models.User || mongoose.model('User', userSchema);
+
+
+app.get('/milestones', async (req, res)=>{
+	try {
+
+
+
+		const baseUUrl = process.env.GITLAB_BASE_URL;
+
+		const response = await fetch(`${baseUUrl}/projects/91/milestones`, {
+			method: 'GET',
+			headers: { 
+				'Content-Type': 'application/json' ,
+				'PRIVATE-TOKEN': 'glpat-gKYtYiZmcyyVYuzz9yUZ'
+			},
+		});
+
+		if (!response.ok) {
+			return res.json({
+				status : "err"
+			})	
+		}
+		
+		const data =  await response.json();
+		res.json({
+			data: data
+		})
+	} catch (error) {
+		console.log(45)
+		res.status(500).json({ message: 'Failed to fetch milestones report', error: error?.message || String(error) });
+	}
+})
+
+
+app.get( '/Users' , async(req , res)=>{
+
+	const baseUUrl = process.env.GITLAB_BASE_URL;
+
+	const response = await fetch(`${baseUUrl}/users`, {
+		method: 'GET',
+		headers: { 
+			'Content-Type': 'application/json' ,
+			'PRIVATE-TOKEN': 'glpat-gKYtYiZmcyyVYuzz9yUZ'
+		},
+	});
+
+
+	const data = await response.json();
+	console.log(data)
+
+	const activeUser = data.filter(user=>{
+		if(user.state){
+			return true
+		}else{
+			return false
+		}
+	})
+
+	res.json({
+		status : "success",
+		data : activeUser	
+	})
+})
+
+// لیست تمام پروژه‌هایی که باید issues از آن‌ها گرفته شود
+const ALL_PROJECT_IDS = [91, 92, 93]; // می‌توانید پروژه‌های مورد نظر را اضافه کنید
+
+// کش برای ذخیره نام پروژه‌ها
+const projectNameCache = {};
+
+// تابع کمکی برای استخراج نام پروژه از لیبل‌ها
+function extractProjectFromLabels(labels) {
+  if (!labels || !Array.isArray(labels)) {
+    return 'Unknown Project';
+  }
+  
+  // جستجو برای لیبل‌هایی که با "Project:" شروع می‌شوند
+  const projectLabel = labels.find(label => label.startsWith('Project:'));
+  
+  if (projectLabel) {
+    // استخراج نام پروژه بعد از "Project:"
+    const projectName = projectLabel.replace('Project:', '').trim();
+    console.log(`پروژه پیدا شد: ${projectName} از لیبل: ${projectLabel}`);
+    return projectName;
+  }
+  
+  console.log(`لیبل پروژه پیدا نشد در: ${JSON.stringify(labels)}`);
+  return 'Unknown Project';
+}
+
+// تابع کمکی برای گرفتن اسم پروژه از GitLab
+async function getProjectName(baseUUrl, projectId) {
+  // اگر نام پروژه در کش موجود است، از کش استفاده می‌کنیم
+  if (projectNameCache[projectId]) {
+    return projectNameCache[projectId];
+  }
+
+  const response = await fetch(`${baseUUrl}/projects/${projectId}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+    },
+  });
+
+  if (!response.ok) {
+    const fallbackName = `Project ${projectId}`;
+    projectNameCache[projectId] = fallbackName;
+    return fallbackName; // fallback اگر خطا داد
+  }
+
+  const data = await response.json();
+  const projectName = data.name || `Project ${projectId}`;
+  projectNameCache[projectId] = projectName;
+  return projectName;
+}
+
+// تابع کمکی برای گرفتن همه issues از یک پروژه با pagination
+async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
+  let allIssues = [];
+  let page = 1;
+  const perPage = 100;
+
+  while (true) {
+    const response = await fetch(
+      `${baseUUrl}/projects/${projectId}/issues?milestone=${encodeURIComponent(
+        milestone
+      )}&page=${page}&per_page=${perPage}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`خطا در گرفتن issues از پروژه ${projectId}, صفحه ${page}`);
+      break;
+    }
+
+    const issues = await response.json();
+    
+    if (issues.length === 0) {
+      break; // اگر صفحه خالی است، pagination تمام شده
+    }
+
+    allIssues = allIssues.concat(issues);
+    page++;
+
+    // اگر تعداد issues کمتر از perPage باشد، یعنی آخرین صفحه است
+    if (issues.length < perPage) {
+      break;
+    }
+  }
+
+  return allIssues;
+}
+
+
+const PROJECT_LABELS = {
+  "Project: Arta": "Arta Project",
+  "Project: Fab": "Fab Project",
+  "Project: Forvest": "Forvest Project",
+  "Project: Akbari": "Akbari Project",
+  "Project: Buildideal": "Buildideal Project",
+};
+
+app.get("/time-spends", async (req, res) => {
+  try {
+    const baseUUrl = process.env.GITLAB_BASE_URL;
+    const { milestone, projectId, userId, workingDays } = req.query;
+    const numWorkingDays = Number(workingDays);
+
+    if (!milestone || !projectId) {
+      return res.status(400).json({ message: "milestone و projectId الزامی هستند" });
+    }
+
+    // گرفتن لیست issues بر اساس milestone و پروژه
+    const response = await fetch(
+      `${baseUUrl}/projects/${projectId}/issues?milestone=${encodeURIComponent(milestone)}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      return res.status(500).json({ message: "مشکل در گرفتن دیتا از GitLab" });
+    }
+
+    const issues = await response.json();
+    let usersIssues = [];
+
+    // حالت ۱: فقط یک یوزر
+    if (userId && userId !== "all") {
+      const userIssues = issues.filter(
+        (issue) => issue.assignee && issue.assignee.id == userId
+      );
+
+      const totalSpent = userIssues.reduce(
+        (sum, issue) => sum + (issue.time_stats?.total_time_spent || 0),
+        0
+      );
+
+      const totalEstimate = userIssues.reduce(
+        (sum, issue) => sum + (issue.time_stats?.time_estimate || 0),
+        0
+      );
+
+      const projectsMap = {};
+      for (const issue of userIssues) {
+        const projectLabel = issue.labels.find((l) => l.startsWith("Project: "));
+        if (!projectLabel) continue;
+
+        if (!projectsMap[projectLabel]) {
+          projectsMap[projectLabel] = {
+            projectLabel,
+            projectName: PROJECT_LABELS[projectLabel] || projectLabel,
+            totalSpent: 0,
+            totalEstimate: 0,
+            percentWork: 0,
+          };
+        }
+
+        projectsMap[projectLabel].totalSpent += issue.time_stats?.total_time_spent || 0;
+        projectsMap[projectLabel].totalEstimate += issue.time_stats?.time_estimate || 0;
+      }
+
+      Object.values(projectsMap).forEach((proj) => {
+        proj.percentWork =
+          totalSpent > 0 ? ((proj.totalSpent / totalSpent) * 100).toFixed(2) : 0;
+        // عملکرد بر اساس روزهای کاری
+        proj.performance =
+          numWorkingDays && numWorkingDays > 0
+            ? ((proj.totalSpent / (numWorkingDays * 26400)) * 100).toFixed(2)
+            : 0;
+      });
+
+      // اطلاعات یوزر
+      const userInfo = userIssues[0]?.assignee || {};
+      usersIssues.push({
+        userId,
+        username: userInfo.username || "",
+        name: userInfo.name || "",
+        avatar_url: userInfo.avatar_url || "",
+        totalSpent,
+        totalEstimate,
+        projects: Object.values(projectsMap),
+      });
+    } 
+    // حالت ۲: همه یوزرها
+    else {
+      const usersMap = {};
+
+      for (const issue of issues) {
+        if (!issue.assignee) continue;
+        const uid = issue.assignee.id;
+
+        if (!usersMap[uid]) {
+          usersMap[uid] = {
+            userId: uid,
+            username: issue.assignee.username,
+            name: issue.assignee.name,
+            avatar_url: issue.assignee.avatar_url,
+            totalSpent: 0,
+            totalEstimate: 0,
+            projects: {},
+          };
+        }
+
+        usersMap[uid].totalSpent += issue.time_stats?.total_time_spent || 0;
+        usersMap[uid].totalEstimate += issue.time_stats?.time_estimate || 0;
+
+        const projectLabel = issue.labels.find((l) => l.startsWith("Project: "));
+        if (!projectLabel) continue;
+
+        if (!usersMap[uid].projects[projectLabel]) {
+          usersMap[uid].projects[projectLabel] = {
+            projectLabel,
+            projectName: PROJECT_LABELS[projectLabel] || projectLabel,
+            totalSpent: 0,
+            totalEstimate: 0,
+            percentWork: 0,
+          };
+        }
+
+        usersMap[uid].projects[projectLabel].totalSpent += issue.time_stats?.total_time_spent || 0;
+        usersMap[uid].projects[projectLabel].totalEstimate += issue.time_stats?.time_estimate || 0;
+      }
+
+      // درصد پروژه‌ها
+      Object.values(usersMap).forEach((user) => {
+        Object.values(user.projects).forEach((proj) => {
+          proj.percentWork =
+            user.totalSpent > 0 ? ((proj.totalSpent / user.totalSpent) * 100).toFixed(2) : 0;
+          // عملکرد بر اساس روزهای کاری
+          proj.performance =
+            numWorkingDays && numWorkingDays > 0
+              ? ((proj.totalSpent / (numWorkingDays * 26400)) * 100).toFixed(2)
+              : 0;
+        });
+        user.projects = Object.values(user.projects);
+      });
+
+      usersIssues = Object.values(usersMap);
+    }
+
+    res.json(usersIssues);
+  } catch (error) {
+    res.status(500).json({
+      message: "خطا در پردازش دیتا",
+      error: error?.message || String(error),
+    });
+  }
+});
+
+
+
+// Milestone daily spends per user: aggregates daily added/subtracted time spent for all issues in milestone
+app.get('/milestone-daily-spends', async (req, res) => {
+  try {
+    const baseUUrl = process.env.GITLAB_BASE_URL;
+    const { projectId = 'all', milestone } = req.query;
+
+    if (!milestone) {
+      return res.status(400).json({ message: 'milestone الزامی است' });
+    }
+
+    // Parse time delta from system note body
+    const parseSpentFromNote = (body) => {
+      if (typeof body !== 'string') return 0;
+      const lowered = body.toLowerCase();
+      const isAdd = lowered.includes('added') && lowered.includes('time spent');
+      const isSub = lowered.includes('subtracted') && lowered.includes('time spent');
+      if (!isAdd && !isSub) return 0;
+      const hourMatch = lowered.match(/(\d+)\s*h/);
+      const minMatch = lowered.match(/(\d+)\s*m/);
+      const secMatch = lowered.match(/(\d+)\s*s/);
+      let seconds = 0;
+      if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
+      if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
+      if (secMatch) seconds += parseInt(secMatch[1], 10);
+      if (seconds === 0) return 0;
+      return isSub ? -seconds : seconds;
+    };
+
+    const projectIds = projectId === 'all' ? ALL_PROJECT_IDS : [projectId];
+
+    // userId => { userId, username, name, avatar_url, byDate: { 'YYYY-MM-DD': seconds } }
+    const usersMap = {};
+
+    for (const pid of projectIds) {
+      const issues = await getAllIssuesFromProject(baseUUrl, pid, milestone);
+
+      for (const issue of issues) {
+        const issueIid = issue.iid;
+        if (!issueIid) continue;
+
+        // Fetch system notes for the issue
+        const notesResp = await fetch(
+          `${baseUUrl}/projects/${pid}/issues/${issueIid}/notes?system=true&per_page=100`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'PRIVATE-TOKEN': process.env.GITLAB_TOKEN,
+            },
+          }
+        );
+        if (!notesResp.ok) continue;
+        const notes = await notesResp.json();
+
+        for (const note of notes) {
+          if (!note?.body || !note?.created_at || !note?.author?.id) continue;
+          const deltaSeconds = parseSpentFromNote(note.body);
+          if (deltaSeconds === 0) continue;
+
+          const dateKey = new Date(note.created_at).toISOString().slice(0, 10);
+          const author = note.author;
+          const uid = author.id;
+
+          if (!usersMap[uid]) {
+            usersMap[uid] = {
+              userId: uid,
+              username: author.username || '',
+              name: author.name || '',
+              avatar_url: author.avatar_url || '',
+              byDate: {},
+            };
+          }
+          usersMap[uid].byDate[dateKey] = (usersMap[uid].byDate[dateKey] || 0) + deltaSeconds;
+        }
+      }
+    }
+
+    // Determine target month from milestone (expects a segment like YYYY-MM). Fallback to current UTC month.
+    const monthMatch = String(milestone).match(/(\d{4})-(\d{2})/);
+    const targetYear = monthMatch ? parseInt(monthMatch[1], 10) : new Date().getUTCFullYear();
+    const targetMonthNum = monthMatch ? parseInt(monthMatch[2], 10) : (new Date().getUTCMonth() + 1); // 1-12
+    const monthIndex = targetMonthNum - 1; // 0-11
+    const daysInMonth = new Date(Date.UTC(targetYear, monthIndex + 1, 0)).getUTCDate();
+
+    // Build full list of dates in the month
+    const monthDates = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(Date.UTC(targetYear, monthIndex, day)).toISOString().slice(0, 10);
+      monthDates.push(d);
+    }
+
+    // Transform to required output structure with spends array over full month (fill missing with 0)
+    const results = Object.values(usersMap).map((u) => ({
+      userId: u.userId,
+      username: u.username,
+      name: u.name,
+      avatar_url: u.avatar_url,
+      spend: monthDates.map((d) => ({ date: d, spent: u.byDate[d] || 0 })),
+    }));
+
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({
+      message: 'خطا در تولید گزارش روزانه مایل‌استون',
+      error: error?.message || String(error),
+    });
+  }
+});
+
+
+app.get("/labels-report", async (req, res) => {
+  try {
+    const baseUUrl = process.env.GITLAB_BASE_URL;
+    const { milestone, labels, userId, projectId } = req.query;
+
+    if (!labels) {
+      return res.status(400).json({ message: "حداقل یک لیبل الزامی است" });
+    }
+
+    const labelList = labels.split(",").map((l) => l.trim());
+    const projectIds =
+      projectId === "all"
+        ? [91, 92, 93, 94, 95] // 👈 لیست همه پروژه‌هات
+        : [projectId];
+
+    let allIssues = [];
+
+    // گرفتن ایشوها از همه پروژه‌ها
+    for (const pid of projectIds) {
+      const params = new URLSearchParams();
+      params.append("labels", labelList.join(","));
+      if (milestone) params.append("milestone", milestone);
+
+      const response = await fetch(
+        `${baseUUrl}/projects/${pid}/issues?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        return res.status(500).json({ message: "مشکل در گرفتن دیتا از GitLab" });
+      }
+
+      const issues = await response.json();
+      allIssues.push(...issues);
+    }
+
+    // فیلتر یوزر
+    if (userId && userId !== "all") {
+      allIssues = allIssues.filter(
+        (issue) => issue.assignee && issue.assignee.id == userId
+      );
+    }
+
+    const results = [];
+
+    for (const label of labelList) {
+      const filteredIssues = allIssues.filter((issue) =>
+        issue.labels.includes(label)
+      );
+
+      const totalSpent = filteredIssues.reduce(
+        (sum, issue) => sum + (issue.time_stats?.total_time_spent || 0),
+        0
+      );
+
+      const issueCount = filteredIssues.length;
+      const uniqueUsers = new Set(
+        filteredIssues.map((i) => i.assignee?.id).filter(Boolean)
+      ).size;
+
+      const avgSpentPerIssue =
+        issueCount > 0 ? (totalSpent / issueCount).toFixed(2) : 0;
+
+      const usersMap = {};
+
+      for (const issue of filteredIssues) {
+        if (issue.assignee) {
+          const uid = issue.assignee.id;
+          if (!usersMap[uid]) {
+            usersMap[uid] = {
+              userId: uid,
+              username: issue.assignee.username,
+              name: issue.assignee.name,
+              avatar_url: issue.assignee.avatar_url,
+              issueCount: 0,
+              spentTime: 0,
+              percentWork: 0,
+            };
+          }
+          usersMap[uid].issueCount += 1;
+          usersMap[uid].spentTime +=
+            issue.time_stats?.total_time_spent || 0;
+        }
+      }
+
+      Object.values(usersMap).forEach((user) => {
+        user.percentWork =
+          totalSpent > 0 ? ((user.spentTime / totalSpent) * 100).toFixed(2) : 0;
+      });
+
+      results.push({
+        label,
+        totalSpent,
+        issueCount,
+        uniqueUsers,
+        avgSpentPerIssue,
+        users: Object.values(usersMap),
+      });
+    }
+
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({
+      message: "خطا در پردازش دیتا",
+      error: error?.message || String(error),
+    });
+  }
+});
+
+
+
+// Daily report: aggregate per-user spent time for a specific date by parsing system notes
+app.get('/daily-report', async (req, res) => {
+  try {
+    const baseUUrl = process.env.GITLAB_BASE_URL;
+    const { projectId = 'all', date } = req.query;
+
+    // target date in YYYY-MM-DD, default to today in UTC
+    const targetDate = (date || new Date().toISOString().slice(0, 10));
+
+    // Resolve project list
+    const projectIds = projectId === 'all' ? ALL_PROJECT_IDS : [projectId];
+
+    // Helper: parse seconds from note body like "added 1h 30m of time spent" or "subtracted 10m of time spent"
+    const parseSpentFromNote = (body) => {
+      if (typeof body !== 'string') return 0;
+      const lowered = body.toLowerCase();
+      const isAdd = lowered.includes('added') && lowered.includes('time spent');
+      const isSub = lowered.includes('subtracted') && lowered.includes('time spent');
+      if (!isAdd && !isSub) return 0;
+      // match numbers like 1h, 30m, 45s
+      const hourMatch = lowered.match(/(\d+)\s*h/);
+      const minMatch = lowered.match(/(\d+)\s*m/);
+      const secMatch = lowered.match(/(\d+)\s*s/);
+      let seconds = 0;
+      if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
+      if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
+      if (secMatch) seconds += parseInt(secMatch[1], 10);
+      if (seconds === 0) return 0;
+      return isSub ? -seconds : seconds;
+    };
+
+    // Per-user aggregation map
+    const usersMap = {};
+
+    for (const pid of projectIds) {
+      // get all issues for this project (no milestone filter to cover daily logs across all)
+      const issues = await getAllIssuesFromProject(baseUUrl, pid, '');
+
+      for (const issue of issues) {
+        const issueIid = issue.iid;
+        if (!issueIid) continue;
+
+        // fetch system notes (where time spent commands are recorded)
+        const notesResp = await fetch(
+          `${baseUUrl}/projects/${pid}/issues/${issueIid}/notes?system=true&per_page=100`,
+          { 
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'PRIVATE-TOKEN': process.env.GITLAB_TOKEN,
+            },
+          }
+        );
+        if (!notesResp.ok) continue;
+        const notes = await notesResp.json();
+
+        for (const note of notes) {
+          // created_at like 2025-09-16T10:20:30.000Z
+          const createdAt = note.created_at;
+          if (!createdAt || !note.body) continue;
+          const noteDate = new Date(createdAt).toISOString().slice(0, 10);
+          if (noteDate !== targetDate) continue;
+
+          const deltaSeconds = parseSpentFromNote(note.body);
+          if (deltaSeconds === 0) continue;
+
+          const author = note.author || {};
+          const uid = author.id;
+          if (!uid) continue;
+
+          if (!usersMap[uid]) {
+            usersMap[uid] = {
+              userId: uid,
+              username: author.username || '',
+              name: author.name || '',
+              avatar_url: author.avatar_url || '',
+              dailySpent: 0,
+            };
+          }
+          usersMap[uid].dailySpent += deltaSeconds;
+        }
+      }
+    }
+
+    const results = Object.values(usersMap).map(u => ({
+      userId: u.userId,
+      username: u.username,
+      name: u.name,
+      avatar_url: u.avatar_url,
+      dailySpent: u.dailySpent,
+    }));
+
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({
+      message: 'خطا در تولید گزارش روزانه',
+      error: error?.message || String(error),
+    });
+  }
+});
+
+// Auth routes using MongoDB
+app.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+      return res.status(400).json({ message: 'username و password الزامی هستند' });
+    }
+
+    const user = await User.findOne({ username, password }).lean();
+    if (!user) {
+      return res.status(401).json({ status: 'error', message: 'نام کاربری یا رمز عبور اشتباه است' });
+    }
+
+    return res.json({ status: 'ok', message: 'ورود موفق بود' });
+  } catch (error) {
+    return res.status(500).json({ message: 'خطا در بررسی ورود', error: error?.message || String(error) });
+  }
+});
+
+app.post('/register', async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+      return res.status(400).json({ message: 'username و password الزامی هستند' });
+    }
+
+    const exists = await User.exists({ username });
+    if (exists) {
+      return res.status(409).json({ message: 'این نام کاربری قبلاً ثبت شده است' });
+    }
+
+    const created = await User.create({ username, password });
+    return res.status(201).json({ status: 'ok', id: created._id });
+  } catch (error) {
+    return res.status(500).json({ message: 'خطا در ثبت کاربر', error: error?.message || String(error) });
+  }
+});
+
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+	console.log(`Server listening on port ${port}`);
+}); 
+
+
