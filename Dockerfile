@@ -4,10 +4,9 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
 
-COPY server.js ./
+RUN npm i
 
-ENV NODE_ENV=production
+COPY . .
 
 CMD ["node", "src/index.js"]
