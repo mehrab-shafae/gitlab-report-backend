@@ -1,9 +1,17 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import mongoose from 'mongoose';
+import cors from "cors";
+
 
 dotenv.config();
 const app = express();
+
+//cors
+app.use(cors({
+  origin : ['http://localhost:3000'] ,
+  credentials : true ,
+}));
 
 // Parse JSON bodies
 app.use(express.json());
@@ -18,6 +26,7 @@ mongoose.connect(mongoUri, { dbName: process.env.MONGODB_DB || 'forvest_git' })
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true, trim: true },
   password: { type: String, required: true },
+  isAdmin: { type: Boolean},
 }, { timestamps: true });
 
 const User = mongoose.models.User || mongoose.model('User', userSchema);
@@ -685,7 +694,7 @@ app.post('/login', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'نام کاربری یا رمز عبور اشتباه است' });
     }
 
-    return res.json({ status: 'ok', message: 'ورود موفق بود' });
+    return res.json({ status: 'ok', message: 'ورود موفق بود' , user });
   } catch (error) {
     return res.status(500).json({ message: 'خطا در بررسی ورود', error: error?.message || String(error) });
   }
