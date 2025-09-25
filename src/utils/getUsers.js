@@ -6,7 +6,7 @@ const getUsers = async function getUsers(){
 		method: 'GET',
 		headers: { 
 			'Content-Type': 'application/json' ,
-			'PRIVATE-TOKEN': 'glpat-gKYtYiZmcyyVYuzz9yUZ'
+			'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
 		},
 	});
 

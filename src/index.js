@@ -43,7 +43,7 @@ app.get('/milestones', async (req, res)=>{
 			method: 'GET',
 			headers: { 
 				'Content-Type': 'application/json' ,
-				'PRIVATE-TOKEN': 'glpat-gKYtYiZmcyyVYuzz9yUZ'
+				'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
 			},
 		});
 
@@ -72,7 +72,7 @@ app.get( '/Users' , async(req , res)=>{
 		method: 'GET',
 		headers: { 
 			'Content-Type': 'application/json' ,
-			'PRIVATE-TOKEN': 'glpat-gKYtYiZmcyyVYuzz9yUZ'
+			'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
 		},
 	});
 
@@ -209,43 +209,55 @@ app.get("/time-spends", async (req, res) => {
       return res.status(400).json({ message: "milestone و projectId الزامی هستند" });
     }
 
-    // گرفتن لیست issues بر اساس milestone و پروژه
-    const response = await fetch(
-      `${baseUUrl}/projects/${projectId}/issues?milestone=${encodeURIComponent(milestone)}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
-        },
+    // گرفتن لیست issues با pagination و پیشفرض state=opened
+    const perPage = 100;
+    let page = 1;
+    let issues = [];
+    while (true) {
+      const resp = await fetch(
+        `${baseUUrl}/projects/${projectId}/issues?milestone=${encodeURIComponent(milestone)}&state=opened&page=${page}&per_page=${perPage}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+          },
+        }
+      );
+      if (!resp.ok) {
+        return res.status(500).json({ message: "مشکل در گرفتن دیتا از GitLab" });
       }
-    );
-
-    if (!response.ok) {
-      return res.status(500).json({ message: "مشکل در گرفتن دیتا از GitLab" });
+      const batch = await resp.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      issues = issues.concat(batch);
+      if (batch.length < perPage) break;
+      page += 1;
     }
-
-    const issues = await response.json();
     let usersIssues = [];
 
     // حالت ۱: فقط یک یوزر
     if (userId && userId !== "all") {
-      const userIssues = issues.filter(
-        (issue) => issue.assignee && issue.assignee.id == userId
-      );
+      // شناسایی ایشوهایی که کاربر در آرایه assignees دارد یا در فیلد قدیمی assignee است
+      const userIssues = issues.filter((issue) => {
+        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+        const inAssignees = assignees.some((a) => a && a.id == userId);
+        const legacy = issue.assignee && issue.assignee.id == userId;
+        return inAssignees || legacy;
+      });
 
-      const totalSpent = userIssues.reduce(
-        (sum, issue) => sum + (issue.time_stats?.total_time_spent || 0),
-        0
-      );
-
-      const totalEstimate = userIssues.reduce(
-        (sum, issue) => sum + (issue.time_stats?.time_estimate || 0),
-        0
-      );
+      // سهم کاربر از هر ایشو = کل زمان/تخمین تقسیم بر تعداد assignees (اگر صفر بود و legacy داشت، 1)
+      let totalSpent = 0;
+      let totalEstimate = 0;
 
       const projectsMap = {};
       for (const issue of userIssues) {
+        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+        const hasLegacy = !!issue.assignee;
+        const assigneeCount = assignees.length > 0 ? assignees.length : (hasLegacy ? 1 : 0);
+        const shareSpent = assigneeCount > 0 ? (issue.time_stats?.total_time_spent || 0) / assigneeCount : 0;
+        const shareEstimate = assigneeCount > 0 ? (issue.time_stats?.time_estimate || 0) / assigneeCount : 0;
+        totalSpent += shareSpent;
+        totalEstimate += shareEstimate;
         const projectLabel = issue.labels.find((l) => l.startsWith("Project: "));
         if (!projectLabel) continue;
 
@@ -259,8 +271,8 @@ app.get("/time-spends", async (req, res) => {
           };
         }
 
-        projectsMap[projectLabel].totalSpent += issue.time_stats?.total_time_spent || 0;
-        projectsMap[projectLabel].totalEstimate += issue.time_stats?.time_estimate || 0;
+        projectsMap[projectLabel].totalSpent += shareSpent;
+        projectsMap[projectLabel].totalEstimate += shareEstimate;
       }
 
       Object.values(projectsMap).forEach((proj) => {
@@ -274,7 +286,14 @@ app.get("/time-spends", async (req, res) => {
       });
 
       // اطلاعات یوزر
-      const userInfo = userIssues[0]?.assignee || {};
+      // تلاش برای استخراج اطلاعات کاربر از assignees یا فیلد legacy
+      let userInfo = {};
+      for (const issue of userIssues) {
+        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+        const found = assignees.find((a) => a && a.id == userId);
+        if (found) { userInfo = found; break; }
+        if (issue.assignee && issue.assignee.id == userId) { userInfo = issue.assignee; break; }
+      }
       usersIssues.push({
         userId,
         username: userInfo.username || "",
@@ -290,44 +309,69 @@ app.get("/time-spends", async (req, res) => {
       const usersMap = {};
 
       for (const issue of issues) {
-        if (!issue.assignee) continue;
-        const uid = issue.assignee.id;
+        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+        const hasLegacy = !!issue.assignee;
+        const recipients = assignees.length > 0 ? assignees : (hasLegacy ? [issue.assignee] : []);
+        if (recipients.length === 0) continue;
 
-        if (!usersMap[uid]) {
-          usersMap[uid] = {
-            userId: uid,
-            username: issue.assignee.username,
-            name: issue.assignee.name,
-            avatar_url: issue.assignee.avatar_url,
-            totalSpent: 0,
-            totalEstimate: 0,
-            projects: {},
-          };
-        }
-
-        usersMap[uid].totalSpent += issue.time_stats?.total_time_spent || 0;
-        usersMap[uid].totalEstimate += issue.time_stats?.time_estimate || 0;
+        const shareSpent = (issue.time_stats?.total_time_spent || 0) / recipients.length;
+        const shareEstimate = (issue.time_stats?.time_estimate || 0) / recipients.length;
 
         const projectLabel = issue.labels.find((l) => l.startsWith("Project: "));
-        if (!projectLabel) continue;
+        for (const person of recipients) {
+          if (!person || !person.id) continue;
+          const uid = person.id;
 
-        if (!usersMap[uid].projects[projectLabel]) {
-          usersMap[uid].projects[projectLabel] = {
-            projectLabel,
-            projectName: PROJECT_LABELS[projectLabel] || projectLabel,
-            totalSpent: 0,
-            totalEstimate: 0,
-            percentWork: 0,
-          };
+          if (!usersMap[uid]) {
+            usersMap[uid] = {
+              userId: uid,
+              username: person.username,
+              name: person.name,
+              avatar_url: person.avatar_url,
+              totalSpent: 0,
+              totalEstimate: 0,
+              projects: {},
+            };
+          }
+
+          usersMap[uid].totalSpent += shareSpent;
+          usersMap[uid].totalEstimate += shareEstimate;
+
+          if (!projectLabel) continue;
+          if (!usersMap[uid].projects[projectLabel]) {
+            usersMap[uid].projects[projectLabel] = {
+              projectLabel,
+              projectName: PROJECT_LABELS[projectLabel] || projectLabel,
+              totalSpent: 0,
+              totalEstimate: 0,
+              percentWork: 0,
+              issueIds: [],
+            };
+          }
+
+          usersMap[uid].projects[projectLabel].totalSpent += shareSpent;
+          usersMap[uid].projects[projectLabel].totalEstimate += shareEstimate;
+          if (issue.iid) {
+            usersMap[uid].projects[projectLabel].issueIds.push(issue.iid);
+          }
         }
-
-        usersMap[uid].projects[projectLabel].totalSpent += issue.time_stats?.total_time_spent || 0;
-        usersMap[uid].projects[projectLabel].totalEstimate += issue.time_stats?.time_estimate || 0;
       }
 
       // درصد پروژه‌ها
       Object.values(usersMap).forEach((user) => {
         Object.values(user.projects).forEach((proj) => {
+          const toHM = (sec) => {
+            const s = Math.round(Number(sec) || 0);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            return `${h}h ${m}m`;
+          };
+          const ids = Array.isArray(proj.issueIds) ? proj.issueIds : [];
+          const idsPreview = ids.slice(0, 5).join(',');
+          const idsSuffix = ids.length > 5 ? `(+${ids.length - 5} more)` : '';
+          console.log(
+            `[time-spends] user="${user.name}" spent=${toHM(user.totalSpent)} estimate=${toHM(user.totalEstimate)} | project="${proj.projectName}" projSpent=${toHM(proj.totalSpent)} | issues=[${idsPreview}] ${idsSuffix}`
+          );
           proj.percentWork =
             user.totalSpent > 0 ? ((proj.totalSpent / user.totalSpent) * 100).toFixed(2) : 0;
           // عملکرد بر اساس روزهای کاری
