@@ -209,13 +209,13 @@ app.get("/time-spends", async (req, res) => {
       return res.status(400).json({ message: "milestone و projectId الزامی هستند" });
     }
 
-    // گرفتن لیست issues با pagination و پیشفرض state=opened
+    // گرفتن لیست issues با pagination و پیشفرض state=all
     const perPage = 100;
     let page = 1;
     let issues = [];
     while (true) {
       const resp = await fetch(
-        `${baseUUrl}/projects/${projectId}/issues?milestone=${encodeURIComponent(milestone)}&state=opened&page=${page}&per_page=${perPage}`,
+        `${baseUUrl}/projects/${projectId}/issues?milestone=${encodeURIComponent(milestone)}&state=all&page=${page}&per_page=${perPage}`,
         {
           method: "GET",
           headers: {
