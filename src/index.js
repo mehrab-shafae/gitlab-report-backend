@@ -31,6 +31,66 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 
+
+
+app.get('/milestones', async (req, res)=>{
+	try {
+		const baseUUrl = process.env.GITLAB_BASE_URL;
+
+		const response = await fetch(`${baseUUrl}/projects/91/milestones`, {
+			method: 'GET',
+			headers: { 
+				'Content-Type': 'application/json' ,
+				'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
+			},
+		});
+
+		if (!response.ok) {
+			return res.json({
+				status : "err"
+			})	
+		}
+		
+		const data =  await response.json();
+		res.json({
+			data: data
+		})
+	} catch (error) {
+		console.log(45)
+		res.status(500).json({ message: 'Failed to fetch milestones report', error: error?.message || String(error) });
+	}
+})
+
+
+app.get( '/Users' , async(req , res)=>{
+
+	const baseUUrl = process.env.GITLAB_BASE_URL;
+
+	const response = await fetch(`${baseUUrl}/users`, {
+		method: 'GET',
+		headers: { 
+			'Content-Type': 'application/json' ,
+			'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
+		},
+	});
+
+
+	const data = await response.json();
+	console.log(data)
+
+	const activeUser = data.filter(user=>{
+		if(user.state){
+			return true
+		}else{
+			return false
+		}
+	})
+
+	res.json({
+		status : "success",
+		data : activeUser	
+	})
+})
 app.get('/labels', async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
@@ -88,68 +148,6 @@ app.get('/labels', async (req, res) => {
     });
   }
 });
-
-app.get('/milestones', async (req, res)=>{
-	try {
-
-
-
-		const baseUUrl = process.env.GITLAB_BASE_URL;
-
-		const response = await fetch(`${baseUUrl}/projects/91/milestones`, {
-			method: 'GET',
-			headers: { 
-				'Content-Type': 'application/json' ,
-				'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
-			},
-		});
-
-		if (!response.ok) {
-			return res.json({
-				status : "err"
-			})	
-		}
-		
-		const data =  await response.json();
-		res.json({
-			data: data
-		})
-	} catch (error) {
-		console.log(45)
-		res.status(500).json({ message: 'Failed to fetch milestones report', error: error?.message || String(error) });
-	}
-})
-
-
-app.get( '/Users' , async(req , res)=>{
-
-	const baseUUrl = process.env.GITLAB_BASE_URL;
-
-	const response = await fetch(`${baseUUrl}/users`, {
-		method: 'GET',
-		headers: { 
-			'Content-Type': 'application/json' ,
-			'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
-		},
-	});
-
-
-	const data = await response.json();
-	console.log(data)
-
-	const activeUser = data.filter(user=>{
-		if(user.state){
-			return true
-		}else{
-			return false
-		}
-	})
-
-	res.json({
-		status : "success",
-		data : activeUser	
-	})
-})
 
 // لیست تمام پروژه‌هایی که باید issues از آن‌ها گرفته شود
 const ALL_PROJECT_IDS = [91, 92, 93]; // می‌توانید پروژه‌های مورد نظر را اضافه کنید
