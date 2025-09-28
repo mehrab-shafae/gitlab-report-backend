@@ -1,21 +1,12 @@
 {
   "name": "gitlab-milestones-api",
   "version": "1.0.0",
-  "description": "Backend API for GitLab Milestones reporting with Swagger",
+  "description": "Backend API for GitLab Milestones reporting",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "start": "node ."
   },
-  "keywords": [
-    "gitlab",
-    "milestones",
-    "express",
-    "swagger"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "axios": "^1.7.7",
     "cors": "^2.8.5",
@@ -25,8 +16,5 @@
     "mongoose": "^8.18.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.4"
   }
 }
