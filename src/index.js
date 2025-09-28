@@ -640,7 +640,11 @@ app.get("/labels-report", async (req, res) => {
       while (true) {
         const params = new URLSearchParams();
         if (milestone) params.append("milestone", milestone);
-        params.set("state", "all");
+        // state: opened | closed | all  (پیش‌فرض: فقط باز)
+        let desiredState = (req.query.state || "opened").toString().toLowerCase();
+        if (desiredState === "open") desiredState = "opened"; // نگاشت open -> opened برای GitLab
+        if (!["opened", "closed", "all"].includes(desiredState)) desiredState = "opened";
+        params.set("state", desiredState);
         params.set("per_page", String(perPage));
         params.set("page", String(page));
 
