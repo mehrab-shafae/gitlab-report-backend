@@ -104,7 +104,7 @@ app.get("/labels", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
     const token = process.env.GITLAB_TOKEN;
-    const projectId = req.query.projectId || process.env.GITLAB_PROJECT_ID;
+    const projectId = req.query.projectId;
 
     if (!baseUUrl || !token) {
       return res
@@ -167,8 +167,7 @@ app.get("/labels", async (req, res) => {
   }
 });
 
-// لیست تمام پروژه‌هایی که باید issues از آن‌ها گرفته شود
-const ALL_PROJECT_IDS = [91, 92, 93]; // می‌توانید پروژه‌های مورد نظر را اضافه کنید
+const ALL_PROJECT_IDS = [];
 
 // کش برای ذخیره نام پروژه‌ها
 const projectNameCache = {};
@@ -263,13 +262,59 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
   return allIssues;
 }
 
-const PROJECT_LABELS = {
-  "Project: Arta": "Arta Project",
-  "Project: Fab": "Fab Project",
-  "Project: Forvest": "Forvest Project",
-  "Project: Akbari": "Akbari Project",
-  "Project: Buildideal": "Buildideal Project",
-};
+// خواندن تمام Project ID ها از یک گروه GitLab به صورت داینامیک (pagination)
+async function getAllProjectIdsFromGroup(baseUUrl) {
+  const groupId = process.env.GITLAB_GROUP_ID;
+  if (!groupId) return [];
+  const perPage = 100;
+  let page = 1;
+  const ids = [];
+  while (true) {
+    const url = `${baseUUrl}/groups/${encodeURIComponent(groupId)}/projects?include_subgroups=true&archived=false&per_page=${perPage}&page=${page}`;
+    const r = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+      },
+    });
+    if (!r.ok) break;
+    const chunk = await r.json();
+    if (!Array.isArray(chunk) || chunk.length === 0) break;
+    for (const p of chunk) {
+      const pid = p?.id ?? p?.project_id;
+      if (pid) ids.push(pid);
+    }
+    const nextPageHeader = r.headers.get("x-next-page");
+    if (!nextPageHeader || nextPageHeader === "0" || chunk.length < perPage)
+      break;
+    page = parseInt(nextPageHeader, 10) || page + 1;
+  }
+  return ids;
+}
+
+// تبدیل ورودی projectId به لیست ID ها
+async function resolveProjectIds(baseUUrl, projectIdParam) {
+  if (projectIdParam === "all") {
+    const dynamicIds = await getAllProjectIdsFromGroup(baseUUrl);
+    if (Array.isArray(dynamicIds) && dynamicIds.length > 0) return dynamicIds;
+    if (Array.isArray(ALL_PROJECT_IDS) && ALL_PROJECT_IDS.length > 0)
+      return ALL_PROJECT_IDS;
+    throw new Error(
+      "Project list is empty. Set GITLAB_GROUP_ID or populate ALL_PROJECT_IDS.",
+    );
+  }
+  return [projectIdParam];
+}
+
+// استخراج نام خوانای پروژه از لیبل های الگوی "Project: X"
+function getProjectDisplayNameFromLabel(projectLabel) {
+  if (typeof projectLabel !== "string") return String(projectLabel || "");
+  if (projectLabel.startsWith("Project:")) {
+    return projectLabel.replace("Project:", "").trim();
+  }
+  return projectLabel;
+}
 
 app.get("/time-spends", async (req, res) => {
   try {
@@ -349,7 +394,7 @@ app.get("/time-spends", async (req, res) => {
         if (!projectsMap[projectLabel]) {
           projectsMap[projectLabel] = {
             projectLabel,
-            projectName: PROJECT_LABELS[projectLabel] || projectLabel,
+            projectName: getProjectDisplayNameFromLabel(projectLabel),
             totalSpent: 0,
             totalEstimate: 0,
             percentWork: 0,
@@ -439,7 +484,7 @@ app.get("/time-spends", async (req, res) => {
           if (!usersMap[uid].projects[projectLabel]) {
             usersMap[uid].projects[projectLabel] = {
               projectLabel,
-              projectName: PROJECT_LABELS[projectLabel] || projectLabel,
+              projectName: getProjectDisplayNameFromLabel(projectLabel),
               totalSpent: 0,
               totalEstimate: 0,
               percentWork: 0,
@@ -526,7 +571,12 @@ app.get("/milestone-daily-spends", async (req, res) => {
       return isSub ? -seconds : seconds;
     };
 
-    const projectIds = projectId === "all" ? ALL_PROJECT_IDS : [projectId];
+    let projectIds = [];
+    try {
+      projectIds = await resolveProjectIds(baseUUrl, projectId);
+    } catch (e) {
+      return res.status(400).json({ message: e?.message || String(e) });
+    }
 
     // userId => { userId, username, name, avatar_url, byDate: { 'YYYY-MM-DD': seconds } }
     const usersMap = {};
@@ -626,10 +676,12 @@ app.get("/labels-report", async (req, res) => {
     }
 
     const labelList = labels.split(",").map((l) => l.trim());
-    const projectIds =
-      projectId === "all"
-        ? [91, 92, 93, 94, 95] // 👈 لیست همه پروژه‌هات
-        : [projectId];
+    let projectIds = [];
+    try {
+      projectIds = await resolveProjectIds(baseUUrl, projectId);
+    } catch (e) {
+      return res.status(400).json({ message: e?.message || String(e) });
+    }
 
     let allIssues = [];
 
@@ -774,7 +826,12 @@ app.get("/daily-report", async (req, res) => {
     const targetDate = date || new Date().toISOString().slice(0, 10);
 
     // Resolve project list
-    const projectIds = projectId === "all" ? ALL_PROJECT_IDS : [projectId];
+    let projectIds = [];
+    try {
+      projectIds = await resolveProjectIds(baseUUrl, projectId);
+    } catch (e) {
+      return res.status(400).json({ message: e?.message || String(e) });
+    }
 
     // Helper: parse seconds from note body like "added 1h 30m of time spent" or "subtracted 10m of time spent"
     const parseSpentFromNote = (body) => {
