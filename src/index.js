@@ -336,7 +336,7 @@ app.get("/time-spends", async (req, res) => {
         // عملکرد بر اساس روزهای کاری
         proj.performance =
           numWorkingDays && numWorkingDays > 0
-            ? ((proj.totalSpent / (numWorkingDays * 26400)) * 100).toFixed(2)
+            ? ((proj.totalSpent / (numWorkingDays * 8 * 3600)) * 100).toFixed(2)
             : 0;
       });
 
@@ -432,7 +432,7 @@ app.get("/time-spends", async (req, res) => {
           // عملکرد بر اساس روزهای کاری
           proj.performance =
             numWorkingDays && numWorkingDays > 0
-              ? ((proj.totalSpent / (numWorkingDays * 26400)) * 100).toFixed(2)
+              ? ((proj.totalSpent / (numWorkingDays * 8 * 3600)) * 100).toFixed(2)
               : 0;
         });
         user.projects = Object.values(user.projects);
@@ -606,9 +606,12 @@ app.get("/labels-report", async (req, res) => {
 
     // فیلتر یوزر
     if (userId && userId !== "all") {
-      allIssues = allIssues.filter(
-        (issue) => issue.assignee && issue.assignee.id == userId
-      );
+      allIssues = allIssues.filter((issue) => {
+        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+        const inAssignees = assignees.some((a) => a && a.id == userId);
+        const legacy = issue.assignee && issue.assignee.id == userId;
+        return inAssignees || legacy;
+      });
     }
 
     const results = [];
@@ -625,7 +628,11 @@ app.get("/labels-report", async (req, res) => {
 
       const issueCount = filteredIssues.length;
       const uniqueUsers = new Set(
-        filteredIssues.map((i) => i.assignee?.id).filter(Boolean)
+        filteredIssues.flatMap((issue) => {
+          const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+          const legacyAssignee = issue.assignee ? [issue.assignee] : [];
+          return [...assignees, ...legacyAssignee].map(a => a?.id).filter(Boolean);
+        })
       ).size;
 
       const avgSpentPerIssue =
@@ -634,22 +641,27 @@ app.get("/labels-report", async (req, res) => {
       const usersMap = {};
 
       for (const issue of filteredIssues) {
-        if (issue.assignee) {
-          const uid = issue.assignee.id;
+        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+        const hasLegacy = !!issue.assignee;
+        const recipients = assignees.length > 0 ? assignees : (hasLegacy ? [issue.assignee] : []);
+        
+        for (const person of recipients) {
+          if (!person || !person.id) continue;
+          const uid = person.id;
+          
           if (!usersMap[uid]) {
             usersMap[uid] = {
               userId: uid,
-              username: issue.assignee.username,
-              name: issue.assignee.name,
-              avatar_url: issue.assignee.avatar_url,
+              username: person.username,
+              name: person.name,
+              avatar_url: person.avatar_url,
               issueCount: 0,
               spentTime: 0,
               percentWork: 0,
             };
           }
           usersMap[uid].issueCount += 1;
-          usersMap[uid].spentTime +=
-            issue.time_stats?.total_time_spent || 0;
+          usersMap[uid].spentTime += issue.time_stats?.total_time_spent || 0;
         }
       }
 

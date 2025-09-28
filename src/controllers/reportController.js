@@ -29,16 +29,26 @@ export async function milestonesReport(req, res) {
 		for (const milestone of milestones) {
 			const issues = await fetchIssuesPaginated(projectId, {
 				milestone: milestone.title,
-				assignee_id: userId,
 				per_page: 100,
 				// date filters
 				created_after: startIso,
 				updated_before: days ? nowIso : undefined,
 			});
 
+			// فیلتر بر اساس userId اگر مشخص شده باشد
+			let filteredIssues = issues;
+			if (userId) {
+				filteredIssues = issues.filter(issue => {
+					const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+					const inAssignees = assignees.some(a => a && a.id === userId);
+					const legacy = issue.assignee && issue.assignee.id === userId;
+					return inAssignees || legacy;
+				});
+			}
+
 			let timeEstimate = 0;
 			let totalTimeSpent = 0;
-			for (const issue of issues) {
+			for (const issue of filteredIssues) {
 				timeEstimate += issue?.time_stats?.time_estimate || 0;
 				totalTimeSpent += issue?.time_stats?.total_time_spent || 0;
 			}
@@ -47,7 +57,7 @@ export async function milestonesReport(req, res) {
 				milestone_id: milestone.id,
 				milestone_iid: milestone.iid,
 				title: milestone.title,
-				issues_count: issues.length,
+				issues_count: filteredIssues.length,
 				time_estimate: timeEstimate,
 				total_time_spent: totalTimeSpent,
 			});

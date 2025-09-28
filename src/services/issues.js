@@ -20,7 +20,7 @@ export async function fetchIssuesPaginated(projectId, params = {}) {
 		});
 		const items = response.data || [];
 		all = all.concat(items);
-		if (items.length < perPage || page >= 10) {
+		if (items.length < perPage) {
 			break;
 		}
 		page += 1;

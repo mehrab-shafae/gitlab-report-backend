@@ -10,10 +10,12 @@ const getUsers = async function getUsers(){
 		},
 	});
 
+	if (!response.ok) {
+		throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+	}
 
 	const data = await response.json();
-
-	return data
+	return data;
 }
 
 export default getUsers;
