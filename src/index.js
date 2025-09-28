@@ -9,7 +9,7 @@ const app = express();
 
 //cors
 app.use(cors({
-  origin : ['http://localhost:3000' , 'https://gitlabreport.forvestlab.ir'] ,
+  origin : ['http://localhost:3000' , 'http://localhost:3001' , 'https://gitlabreport.forvestlab.ir'] ,
   credentials : true ,
 }));
 
@@ -579,10 +579,9 @@ app.get("/labels-report", async (req, res) => {
 
     let allIssues = [];
 
-    // گرفتن ایشوها از همه پروژه‌ها
+    // گرفتن ایشوها از همه پروژه‌ها - بدون فیلتر label در GitLab
     for (const pid of projectIds) {
       const params = new URLSearchParams();
-      params.append("labels", labelList.join(","));
       if (milestone) params.append("milestone", milestone);
 
       const response = await fetch(
@@ -617,8 +616,9 @@ app.get("/labels-report", async (req, res) => {
     const results = [];
 
     for (const label of labelList) {
+      // فیلتر issues که این label خاص را دارند
       const filteredIssues = allIssues.filter((issue) =>
-        issue.labels.includes(label)
+        issue.labels && issue.labels.includes(label)
       );
 
       const totalSpent = filteredIssues.reduce(
