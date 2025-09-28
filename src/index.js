@@ -104,7 +104,7 @@ app.get("/labels", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
     const token = process.env.GITLAB_TOKEN;
-    const projectId = req.query.projectId;
+    const projectId = req.query.projectId || process.env.GITLAB_PROJECT_ID;
 
     if (!baseUUrl || !token) {
       return res
