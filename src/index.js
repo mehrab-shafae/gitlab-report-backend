@@ -633,30 +633,40 @@ app.get("/labels-report", async (req, res) => {
 
     let allIssues = [];
 
-    // گرفتن ایشوها از همه پروژه‌ها - بدون فیلتر label در GitLab
+    // گرفتن ایشوها از همه پروژه‌ها - با pagination و state=all تا شمارش کامل باشد
     for (const pid of projectIds) {
-      const params = new URLSearchParams();
-      if (milestone) params.append("milestone", milestone);
+      const perPage = 100;
+      let page = 1;
+      while (true) {
+        const params = new URLSearchParams();
+        if (milestone) params.append("milestone", milestone);
+        params.set("state", "all");
+        params.set("per_page", String(perPage));
+        params.set("page", String(page));
 
-      const response = await fetch(
-        `${baseUUrl}/projects/${pid}/issues?${params.toString()}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+        const response = await fetch(
+          `${baseUUrl}/projects/${pid}/issues?${params.toString()}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+            },
           },
-        },
-      );
+        );
 
-      if (!response.ok) {
-        return res
-          .status(500)
-          .json({ message: "مشکل در گرفتن دیتا از GitLab" });
+        if (!response.ok) {
+          return res
+            .status(500)
+            .json({ message: "مشکل در گرفتن دیتا از GitLab" });
+        }
+
+        const batch = await response.json();
+        if (!Array.isArray(batch) || batch.length === 0) break;
+        allIssues = allIssues.concat(batch);
+        if (batch.length < perPage) break;
+        page += 1;
       }
-
-      const issues = await response.json();
-      allIssues.push(...issues);
     }
 
     // فیلتر یوزر
