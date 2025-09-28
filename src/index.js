@@ -1,149 +1,167 @@
-import dotenv from 'dotenv';
-import express from 'express';
-import mongoose from 'mongoose';
+import dotenv from "dotenv";
+import express from "express";
+import mongoose from "mongoose";
 import cors from "cors";
-
 
 dotenv.config();
 const app = express();
 
 //cors
-app.use(cors({
-  origin : ['http://localhost:3000' , 'http://localhost:3001' , 'https://gitlabreport.forvestlab.ir'] ,
-  credentials : true ,
-}));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "https://gitlabreport.forvestlab.ir",
+    ],
+    credentials: true,
+  }),
+);
 
 // Parse JSON bodies
 app.use(express.json());
 
 // MongoDB connection
-const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
-mongoose.connect(mongoUri, { dbName: process.env.MONGODB_DB || 'forvest_git' })
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.error('MongoDB connection error:', err.message));
+const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017";
+mongoose
+  .connect(mongoUri, { dbName: process.env.MONGODB_DB || "forvest_git" })
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error("MongoDB connection error:", err.message));
 
 // User schema/model
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true, trim: true },
-  password: { type: String, required: true },
-  isAdmin: { type: Boolean},
-}, { timestamps: true });
+const userSchema = new mongoose.Schema(
+  {
+    username: { type: String, required: true, unique: true, trim: true },
+    password: { type: String, required: true },
+    isAdmin: { type: Boolean },
+  },
+  { timestamps: true },
+);
 
-const User = mongoose.models.User || mongoose.model('User', userSchema);
+const User = mongoose.models.User || mongoose.model("User", userSchema);
 
+app.get("/milestones", async (req, res) => {
+  try {
+    const baseUUrl = process.env.GITLAB_BASE_URL;
 
+    const response = await fetch(`${baseUUrl}/projects/91/milestones`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+      },
+    });
 
-app.get('/milestones', async (req, res)=>{
-	try {
-		const baseUUrl = process.env.GITLAB_BASE_URL;
+    if (!response.ok) {
+      return res.json({
+        status: "err",
+      });
+    }
 
-		const response = await fetch(`${baseUUrl}/projects/91/milestones`, {
-			method: 'GET',
-			headers: { 
-				'Content-Type': 'application/json' ,
-				'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
-			},
-		});
+    const data = await response.json();
+    res.json({
+      data: data,
+    });
+  } catch (error) {
+    console.log(45);
+    res
+      .status(500)
+      .json({
+        message: "Failed to fetch milestones report",
+        error: error?.message || String(error),
+      });
+  }
+});
 
-		if (!response.ok) {
-			return res.json({
-				status : "err"
-			})	
-		}
-		
-		const data =  await response.json();
-		res.json({
-			data: data
-		})
-	} catch (error) {
-		console.log(45)
-		res.status(500).json({ message: 'Failed to fetch milestones report', error: error?.message || String(error) });
-	}
-})
+app.get("/Users", async (req, res) => {
+  const baseUUrl = process.env.GITLAB_BASE_URL;
 
+  const response = await fetch(`${baseUUrl}/users`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+    },
+  });
 
-app.get( '/Users' , async(req , res)=>{
+  const data = await response.json();
+  console.log(data);
 
-	const baseUUrl = process.env.GITLAB_BASE_URL;
+  const activeUser = data.filter((user) => {
+    if (user.state) {
+      return true;
+    } else {
+      return false;
+    }
+  });
 
-	const response = await fetch(`${baseUUrl}/users`, {
-		method: 'GET',
-		headers: { 
-			'Content-Type': 'application/json' ,
-			'PRIVATE-TOKEN': process.env.GITLAB_TOKEN
-		},
-	});
-
-
-	const data = await response.json();
-	console.log(data)
-
-	const activeUser = data.filter(user=>{
-		if(user.state){
-			return true
-		}else{
-			return false
-		}
-	})
-
-	res.json({
-		status : "success",
-		data : activeUser	
-	})
-})
-app.get('/labels', async (req, res) => {
+  res.json({
+    status: "success",
+    data: activeUser,
+  });
+});
+app.get("/labels", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
     const token = process.env.GITLAB_TOKEN;
     const projectId = req.query.projectId || process.env.GITLAB_PROJECT_ID;
 
     if (!baseUUrl || !token) {
-      return res.status(500).json({ message: 'GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است' });
+      return res
+        .status(500)
+        .json({ message: "GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است" });
     }
     if (!projectId) {
-      return res.status(400).json({ message: 'projectId مشخص نیست (query یا .env)' });
+      return res
+        .status(400)
+        .json({ message: "projectId مشخص نیست (query یا .env)" });
     }
 
     const params = new URLSearchParams({
-      per_page: '100',
-      with_counts: (req.query.with_counts ?? 'true').toString(),
-      include_ancestor_groups: (req.query.include_ancestor_groups ?? 'true').toString(),
+      per_page: "100",
+      with_counts: (req.query.with_counts ?? "true").toString(),
+      include_ancestor_groups: (
+        req.query.include_ancestor_groups ?? "true"
+      ).toString(),
     });
-    if (req.query.search) params.set('search', String(req.query.search));
+    if (req.query.search) params.set("search", String(req.query.search));
 
     let page = 1;
     const allLabels = [];
     while (true) {
-      params.set('page', String(page));
+      params.set("page", String(page));
       const url = `${baseUUrl}/projects/${encodeURIComponent(projectId)}/labels?${params.toString()}`;
 
       const r = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
-          'PRIVATE-TOKEN': token,
+          "Content-Type": "application/json",
+          "PRIVATE-TOKEN": token,
         },
       });
 
       if (!r.ok) {
-        return res.status(r.status).json({ status: 'err', message: `GitLab responded ${r.status}` });
+        return res
+          .status(r.status)
+          .json({ status: "err", message: `GitLab responded ${r.status}` });
       }
 
       const chunk = await r.json();
       allLabels.push(...chunk);
 
       // pagination via X-Next-Page, fallback to chunk length
-      const nextPageHeader = r.headers.get('x-next-page');
-      const perPage = Number(params.get('per_page')) || 100;
-      if (!nextPageHeader || nextPageHeader === '0' || chunk.length < perPage) break;
+      const nextPageHeader = r.headers.get("x-next-page");
+      const perPage = Number(params.get("per_page")) || 100;
+      if (!nextPageHeader || nextPageHeader === "0" || chunk.length < perPage)
+        break;
 
       page = parseInt(nextPageHeader, 10) || page + 1;
     }
 
-    res.json({ status: 'success', data: allLabels });
+    res.json({ status: "success", data: allLabels });
   } catch (e) {
     res.status(500).json({
-      message: 'Failed to fetch labels',
+      message: "Failed to fetch labels",
       error: e?.message || String(e),
     });
   }
@@ -158,21 +176,21 @@ const projectNameCache = {};
 // تابع کمکی برای استخراج نام پروژه از لیبل‌ها
 function extractProjectFromLabels(labels) {
   if (!labels || !Array.isArray(labels)) {
-    return 'Unknown Project';
+    return "Unknown Project";
   }
-  
+
   // جستجو برای لیبل‌هایی که با "Project:" شروع می‌شوند
-  const projectLabel = labels.find(label => label.startsWith('Project:'));
-  
+  const projectLabel = labels.find((label) => label.startsWith("Project:"));
+
   if (projectLabel) {
     // استخراج نام پروژه بعد از "Project:"
-    const projectName = projectLabel.replace('Project:', '').trim();
+    const projectName = projectLabel.replace("Project:", "").trim();
     console.log(`پروژه پیدا شد: ${projectName} از لیبل: ${projectLabel}`);
     return projectName;
   }
-  
+
   console.log(`لیبل پروژه پیدا نشد در: ${JSON.stringify(labels)}`);
-  return 'Unknown Project';
+  return "Unknown Project";
 }
 
 // تابع کمکی برای گرفتن اسم پروژه از GitLab
@@ -211,7 +229,7 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
   while (true) {
     const response = await fetch(
       `${baseUUrl}/projects/${projectId}/issues?milestone=${encodeURIComponent(
-        milestone
+        milestone,
       )}&page=${page}&per_page=${perPage}`,
       {
         method: "GET",
@@ -219,7 +237,7 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
           "Content-Type": "application/json",
           "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
         },
-      }
+      },
     );
 
     if (!response.ok) {
@@ -228,7 +246,7 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
     }
 
     const issues = await response.json();
-    
+
     if (issues.length === 0) {
       break; // اگر صفحه خالی است، pagination تمام شده
     }
@@ -245,7 +263,6 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
   return allIssues;
 }
 
-
 const PROJECT_LABELS = {
   "Project: Arta": "Arta Project",
   "Project: Fab": "Fab Project",
@@ -261,7 +278,9 @@ app.get("/time-spends", async (req, res) => {
     const numWorkingDays = Number(workingDays);
 
     if (!milestone || !projectId) {
-      return res.status(400).json({ message: "milestone و projectId الزامی هستند" });
+      return res
+        .status(400)
+        .json({ message: "milestone و projectId الزامی هستند" });
     }
 
     // گرفتن لیست issues با pagination و پیشفرض state=all
@@ -277,10 +296,12 @@ app.get("/time-spends", async (req, res) => {
             "Content-Type": "application/json",
             "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
           },
-        }
+        },
       );
       if (!resp.ok) {
-        return res.status(500).json({ message: "مشکل در گرفتن دیتا از GitLab" });
+        return res
+          .status(500)
+          .json({ message: "مشکل در گرفتن دیتا از GitLab" });
       }
       const batch = await resp.json();
       if (!Array.isArray(batch) || batch.length === 0) break;
@@ -308,12 +329,21 @@ app.get("/time-spends", async (req, res) => {
       for (const issue of userIssues) {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
         const hasLegacy = !!issue.assignee;
-        const assigneeCount = assignees.length > 0 ? assignees.length : (hasLegacy ? 1 : 0);
-        const shareSpent = assigneeCount > 0 ? (issue.time_stats?.total_time_spent || 0) / assigneeCount : 0;
-        const shareEstimate = assigneeCount > 0 ? (issue.time_stats?.time_estimate || 0) / assigneeCount : 0;
+        const assigneeCount =
+          assignees.length > 0 ? assignees.length : hasLegacy ? 1 : 0;
+        const shareSpent =
+          assigneeCount > 0
+            ? (issue.time_stats?.total_time_spent || 0) / assigneeCount
+            : 0;
+        const shareEstimate =
+          assigneeCount > 0
+            ? (issue.time_stats?.time_estimate || 0) / assigneeCount
+            : 0;
         totalSpent += shareSpent;
         totalEstimate += shareEstimate;
-        const projectLabel = issue.labels.find((l) => l.startsWith("Project: "));
+        const projectLabel = issue.labels.find((l) =>
+          l.startsWith("Project: "),
+        );
         if (!projectLabel) continue;
 
         if (!projectsMap[projectLabel]) {
@@ -332,7 +362,9 @@ app.get("/time-spends", async (req, res) => {
 
       Object.values(projectsMap).forEach((proj) => {
         proj.percentWork =
-          totalSpent > 0 ? ((proj.totalSpent / totalSpent) * 100).toFixed(2) : 0;
+          totalSpent > 0
+            ? ((proj.totalSpent / totalSpent) * 100).toFixed(2)
+            : 0;
         // عملکرد بر اساس روزهای کاری
         proj.performance =
           numWorkingDays && numWorkingDays > 0
@@ -346,8 +378,14 @@ app.get("/time-spends", async (req, res) => {
       for (const issue of userIssues) {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
         const found = assignees.find((a) => a && a.id == userId);
-        if (found) { userInfo = found; break; }
-        if (issue.assignee && issue.assignee.id == userId) { userInfo = issue.assignee; break; }
+        if (found) {
+          userInfo = found;
+          break;
+        }
+        if (issue.assignee && issue.assignee.id == userId) {
+          userInfo = issue.assignee;
+          break;
+        }
       }
       usersIssues.push({
         userId,
@@ -358,7 +396,7 @@ app.get("/time-spends", async (req, res) => {
         totalEstimate,
         projects: Object.values(projectsMap),
       });
-    } 
+    }
     // حالت ۲: همه یوزرها
     else {
       const usersMap = {};
@@ -366,13 +404,18 @@ app.get("/time-spends", async (req, res) => {
       for (const issue of issues) {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
         const hasLegacy = !!issue.assignee;
-        const recipients = assignees.length > 0 ? assignees : (hasLegacy ? [issue.assignee] : []);
+        const recipients =
+          assignees.length > 0 ? assignees : hasLegacy ? [issue.assignee] : [];
         if (recipients.length === 0) continue;
 
-        const shareSpent = (issue.time_stats?.total_time_spent || 0) / recipients.length;
-        const shareEstimate = (issue.time_stats?.time_estimate || 0) / recipients.length;
+        const shareSpent =
+          (issue.time_stats?.total_time_spent || 0) / recipients.length;
+        const shareEstimate =
+          (issue.time_stats?.time_estimate || 0) / recipients.length;
 
-        const projectLabel = issue.labels.find((l) => l.startsWith("Project: "));
+        const projectLabel = issue.labels.find((l) =>
+          l.startsWith("Project: "),
+        );
         for (const person of recipients) {
           if (!person || !person.id) continue;
           const uid = person.id;
@@ -422,17 +465,21 @@ app.get("/time-spends", async (req, res) => {
             return `${h}h ${m}m`;
           };
           const ids = Array.isArray(proj.issueIds) ? proj.issueIds : [];
-          const idsPreview = ids.slice(0, 5).join(',');
-          const idsSuffix = ids.length > 5 ? `(+${ids.length - 5} more)` : '';
+          const idsPreview = ids.slice(0, 5).join(",");
+          const idsSuffix = ids.length > 5 ? `(+${ids.length - 5} more)` : "";
           console.log(
-            `[time-spends] user="${user.name}" spent=${toHM(user.totalSpent)} estimate=${toHM(user.totalEstimate)} | project="${proj.projectName}" projSpent=${toHM(proj.totalSpent)} | issues=[${idsPreview}] ${idsSuffix}`
+            `[time-spends] user="${user.name}" spent=${toHM(user.totalSpent)} estimate=${toHM(user.totalEstimate)} | project="${proj.projectName}" projSpent=${toHM(proj.totalSpent)} | issues=[${idsPreview}] ${idsSuffix}`,
           );
           proj.percentWork =
-            user.totalSpent > 0 ? ((proj.totalSpent / user.totalSpent) * 100).toFixed(2) : 0;
+            user.totalSpent > 0
+              ? ((proj.totalSpent / user.totalSpent) * 100).toFixed(2)
+              : 0;
           // عملکرد بر اساس روزهای کاری
           proj.performance =
             numWorkingDays && numWorkingDays > 0
-              ? ((proj.totalSpent / (numWorkingDays * 8 * 3600)) * 100).toFixed(2)
+              ? ((proj.totalSpent / (numWorkingDays * 8 * 3600)) * 100).toFixed(
+                  2,
+                )
               : 0;
         });
         user.projects = Object.values(user.projects);
@@ -450,24 +497,23 @@ app.get("/time-spends", async (req, res) => {
   }
 });
 
-
-
 // Milestone daily spends per user: aggregates daily added/subtracted time spent for all issues in milestone
-app.get('/milestone-daily-spends', async (req, res) => {
+app.get("/milestone-daily-spends", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
-    const { projectId = 'all', milestone } = req.query;
+    const { projectId = "all", milestone } = req.query;
 
     if (!milestone) {
-      return res.status(400).json({ message: 'milestone الزامی است' });
+      return res.status(400).json({ message: "milestone الزامی است" });
     }
 
     // Parse time delta from system note body
     const parseSpentFromNote = (body) => {
-      if (typeof body !== 'string') return 0;
+      if (typeof body !== "string") return 0;
       const lowered = body.toLowerCase();
-      const isAdd = lowered.includes('added') && lowered.includes('time spent');
-      const isSub = lowered.includes('subtracted') && lowered.includes('time spent');
+      const isAdd = lowered.includes("added") && lowered.includes("time spent");
+      const isSub =
+        lowered.includes("subtracted") && lowered.includes("time spent");
       if (!isAdd && !isSub) return 0;
       const hourMatch = lowered.match(/(\d+)\s*h/);
       const minMatch = lowered.match(/(\d+)\s*m/);
@@ -480,7 +526,7 @@ app.get('/milestone-daily-spends', async (req, res) => {
       return isSub ? -seconds : seconds;
     };
 
-    const projectIds = projectId === 'all' ? ALL_PROJECT_IDS : [projectId];
+    const projectIds = projectId === "all" ? ALL_PROJECT_IDS : [projectId];
 
     // userId => { userId, username, name, avatar_url, byDate: { 'YYYY-MM-DD': seconds } }
     const usersMap = {};
@@ -496,12 +542,12 @@ app.get('/milestone-daily-spends', async (req, res) => {
         const notesResp = await fetch(
           `${baseUUrl}/projects/${pid}/issues/${issueIid}/notes?system=true&per_page=100`,
           {
-            method: 'GET',
+            method: "GET",
             headers: {
-              'Content-Type': 'application/json',
-              'PRIVATE-TOKEN': process.env.GITLAB_TOKEN,
+              "Content-Type": "application/json",
+              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
             },
-          }
+          },
         );
         if (!notesResp.ok) continue;
         const notes = await notesResp.json();
@@ -518,28 +564,37 @@ app.get('/milestone-daily-spends', async (req, res) => {
           if (!usersMap[uid]) {
             usersMap[uid] = {
               userId: uid,
-              username: author.username || '',
-              name: author.name || '',
-              avatar_url: author.avatar_url || '',
+              username: author.username || "",
+              name: author.name || "",
+              avatar_url: author.avatar_url || "",
               byDate: {},
             };
           }
-          usersMap[uid].byDate[dateKey] = (usersMap[uid].byDate[dateKey] || 0) + deltaSeconds;
+          usersMap[uid].byDate[dateKey] =
+            (usersMap[uid].byDate[dateKey] || 0) + deltaSeconds;
         }
       }
     }
 
     // Determine target month from milestone (expects a segment like YYYY-MM). Fallback to current UTC month.
     const monthMatch = String(milestone).match(/(\d{4})-(\d{2})/);
-    const targetYear = monthMatch ? parseInt(monthMatch[1], 10) : new Date().getUTCFullYear();
-    const targetMonthNum = monthMatch ? parseInt(monthMatch[2], 10) : (new Date().getUTCMonth() + 1); // 1-12
+    const targetYear = monthMatch
+      ? parseInt(monthMatch[1], 10)
+      : new Date().getUTCFullYear();
+    const targetMonthNum = monthMatch
+      ? parseInt(monthMatch[2], 10)
+      : new Date().getUTCMonth() + 1; // 1-12
     const monthIndex = targetMonthNum - 1; // 0-11
-    const daysInMonth = new Date(Date.UTC(targetYear, monthIndex + 1, 0)).getUTCDate();
+    const daysInMonth = new Date(
+      Date.UTC(targetYear, monthIndex + 1, 0),
+    ).getUTCDate();
 
     // Build full list of dates in the month
     const monthDates = [];
     for (let day = 1; day <= daysInMonth; day++) {
-      const d = new Date(Date.UTC(targetYear, monthIndex, day)).toISOString().slice(0, 10);
+      const d = new Date(Date.UTC(targetYear, monthIndex, day))
+        .toISOString()
+        .slice(0, 10);
       monthDates.push(d);
     }
 
@@ -555,12 +610,11 @@ app.get('/milestone-daily-spends', async (req, res) => {
     res.json(results);
   } catch (error) {
     res.status(500).json({
-      message: 'خطا در تولید گزارش روزانه مایل‌استون',
+      message: "خطا در تولید گزارش روزانه مایل‌استون",
       error: error?.message || String(error),
     });
   }
 });
-
 
 app.get("/labels-report", async (req, res) => {
   try {
@@ -592,11 +646,13 @@ app.get("/labels-report", async (req, res) => {
             "Content-Type": "application/json",
             "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
           },
-        }
+        },
       );
 
       if (!response.ok) {
-        return res.status(500).json({ message: "مشکل در گرفتن دیتا از GitLab" });
+        return res
+          .status(500)
+          .json({ message: "مشکل در گرفتن دیتا از GitLab" });
       }
 
       const issues = await response.json();
@@ -617,22 +673,26 @@ app.get("/labels-report", async (req, res) => {
 
     for (const label of labelList) {
       // فیلتر issues که این label خاص را دارند
-      const filteredIssues = allIssues.filter((issue) =>
-        issue.labels && issue.labels.includes(label)
+      const filteredIssues = allIssues.filter(
+        (issue) => issue.labels && issue.labels.includes(label),
       );
 
       const totalSpent = filteredIssues.reduce(
         (sum, issue) => sum + (issue.time_stats?.total_time_spent || 0),
-        0
+        0,
       );
 
       const issueCount = filteredIssues.length;
       const uniqueUsers = new Set(
         filteredIssues.flatMap((issue) => {
-          const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+          const assignees = Array.isArray(issue.assignees)
+            ? issue.assignees
+            : [];
           const legacyAssignee = issue.assignee ? [issue.assignee] : [];
-          return [...assignees, ...legacyAssignee].map(a => a?.id).filter(Boolean);
-        })
+          return [...assignees, ...legacyAssignee]
+            .map((a) => a?.id)
+            .filter(Boolean);
+        }),
       ).size;
 
       const avgSpentPerIssue =
@@ -643,12 +703,13 @@ app.get("/labels-report", async (req, res) => {
       for (const issue of filteredIssues) {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
         const hasLegacy = !!issue.assignee;
-        const recipients = assignees.length > 0 ? assignees : (hasLegacy ? [issue.assignee] : []);
-        
+        const recipients =
+          assignees.length > 0 ? assignees : hasLegacy ? [issue.assignee] : [];
+
         for (const person of recipients) {
           if (!person || !person.id) continue;
           const uid = person.id;
-          
+
           if (!usersMap[uid]) {
             usersMap[uid] = {
               userId: uid,
@@ -689,26 +750,25 @@ app.get("/labels-report", async (req, res) => {
   }
 });
 
-
-
 // Daily report: aggregate per-user spent time for a specific date by parsing system notes
-app.get('/daily-report', async (req, res) => {
+app.get("/daily-report", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
-    const { projectId = 'all', date } = req.query;
+    const { projectId = "all", date } = req.query;
 
     // target date in YYYY-MM-DD, default to today in UTC
-    const targetDate = (date || new Date().toISOString().slice(0, 10));
+    const targetDate = date || new Date().toISOString().slice(0, 10);
 
     // Resolve project list
-    const projectIds = projectId === 'all' ? ALL_PROJECT_IDS : [projectId];
+    const projectIds = projectId === "all" ? ALL_PROJECT_IDS : [projectId];
 
     // Helper: parse seconds from note body like "added 1h 30m of time spent" or "subtracted 10m of time spent"
     const parseSpentFromNote = (body) => {
-      if (typeof body !== 'string') return 0;
+      if (typeof body !== "string") return 0;
       const lowered = body.toLowerCase();
-      const isAdd = lowered.includes('added') && lowered.includes('time spent');
-      const isSub = lowered.includes('subtracted') && lowered.includes('time spent');
+      const isAdd = lowered.includes("added") && lowered.includes("time spent");
+      const isSub =
+        lowered.includes("subtracted") && lowered.includes("time spent");
       if (!isAdd && !isSub) return 0;
       // match numbers like 1h, 30m, 45s
       const hourMatch = lowered.match(/(\d+)\s*h/);
@@ -727,7 +787,7 @@ app.get('/daily-report', async (req, res) => {
 
     for (const pid of projectIds) {
       // get all issues for this project (no milestone filter to cover daily logs across all)
-      const issues = await getAllIssuesFromProject(baseUUrl, pid, '');
+      const issues = await getAllIssuesFromProject(baseUUrl, pid, "");
 
       for (const issue of issues) {
         const issueIid = issue.iid;
@@ -736,13 +796,13 @@ app.get('/daily-report', async (req, res) => {
         // fetch system notes (where time spent commands are recorded)
         const notesResp = await fetch(
           `${baseUUrl}/projects/${pid}/issues/${issueIid}/notes?system=true&per_page=100`,
-          { 
-            method: 'GET',
+          {
+            method: "GET",
             headers: {
-              'Content-Type': 'application/json',
-              'PRIVATE-TOKEN': process.env.GITLAB_TOKEN,
+              "Content-Type": "application/json",
+              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
             },
-          }
+          },
         );
         if (!notesResp.ok) continue;
         const notes = await notesResp.json();
@@ -764,9 +824,9 @@ app.get('/daily-report', async (req, res) => {
           if (!usersMap[uid]) {
             usersMap[uid] = {
               userId: uid,
-              username: author.username || '',
-              name: author.name || '',
-              avatar_url: author.avatar_url || '',
+              username: author.username || "",
+              name: author.name || "",
+              avatar_url: author.avatar_url || "",
               dailySpent: 0,
             };
           }
@@ -775,7 +835,7 @@ app.get('/daily-report', async (req, res) => {
       }
     }
 
-    const results = Object.values(usersMap).map(u => ({
+    const results = Object.values(usersMap).map((u) => ({
       userId: u.userId,
       username: u.username,
       name: u.name,
@@ -786,54 +846,72 @@ app.get('/daily-report', async (req, res) => {
     res.json(results);
   } catch (error) {
     res.status(500).json({
-      message: 'خطا در تولید گزارش روزانه',
+      message: "خطا در تولید گزارش روزانه",
       error: error?.message || String(error),
     });
   }
 });
 
 // Auth routes using MongoDB
-app.post('/login', async (req, res) => {
+app.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
-      return res.status(400).json({ message: 'username و password الزامی هستند' });
+      return res
+        .status(400)
+        .json({ message: "username و password الزامی هستند" });
     }
 
     const user = await User.findOne({ username, password }).lean();
     if (!user) {
-      return res.status(401).json({ status: 'error', message: 'نام کاربری یا رمز عبور اشتباه است' });
+      return res
+        .status(401)
+        .json({
+          status: "error",
+          message: "نام کاربری یا رمز عبور اشتباه است",
+        });
     }
 
-    return res.json({ status: 'ok', message: 'ورود موفق بود' , user });
+    return res.json({ status: "ok", message: "ورود موفق بود", user });
   } catch (error) {
-    return res.status(500).json({ message: 'خطا در بررسی ورود', error: error?.message || String(error) });
+    return res
+      .status(500)
+      .json({
+        message: "خطا در بررسی ورود",
+        error: error?.message || String(error),
+      });
   }
 });
 
-app.post('/register', async (req, res) => {
+app.post("/register", async (req, res) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
-      return res.status(400).json({ message: 'username و password الزامی هستند' });
+      return res
+        .status(400)
+        .json({ message: "username و password الزامی هستند" });
     }
 
     const exists = await User.exists({ username });
     if (exists) {
-      return res.status(409).json({ message: 'این نام کاربری قبلاً ثبت شده است' });
+      return res
+        .status(409)
+        .json({ message: "این نام کاربری قبلاً ثبت شده است" });
     }
 
     const created = await User.create({ username, password });
-    return res.status(201).json({ status: 'ok', id: created._id });
+    return res.status(201).json({ status: "ok", id: created._id });
   } catch (error) {
-    return res.status(500).json({ message: 'خطا در ثبت کاربر', error: error?.message || String(error) });
+    return res
+      .status(500)
+      .json({
+        message: "خطا در ثبت کاربر",
+        error: error?.message || String(error),
+      });
   }
 });
 
-
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-	console.log(`Server listening on port ${port}`);
-}); 
-
-
+  console.log(`Server listening on port ${port}`);
+});
