@@ -788,78 +788,70 @@ app.get("/labels-report", async (req, res) => {
       });
     }
 
-    const results = [];
+    // فیلتر ایشوها: فقط ایشوهایی که همه لیبل‌های داده‌شده را دارند (AND)
+    const filteredIssues = allIssues.filter(
+      (issue) =>
+        Array.isArray(issue.labels) &&
+        labelList.every((lbl) => issue.labels.includes(lbl))
+    );
 
-    for (const label of labelList) {
-      // فیلتر issues که این label خاص را دارند
-      const filteredIssues = allIssues.filter(
-        (issue) => issue.labels && issue.labels.includes(label),
-      );
-
-      const totalSpent = filteredIssues.reduce(
-        (sum, issue) => sum + (issue.time_stats?.total_time_spent || 0),
-        0,
-      );
-
-      const issueCount = filteredIssues.length;
-      const uniqueUsers = new Set(
-        filteredIssues.flatMap((issue) => {
-          const assignees = Array.isArray(issue.assignees)
-            ? issue.assignees
-            : [];
-          const legacyAssignee = issue.assignee ? [issue.assignee] : [];
-          return [...assignees, ...legacyAssignee]
-            .map((a) => a?.id)
-            .filter(Boolean);
-        }),
-      ).size;
-
-      const avgSpentPerIssue =
-        issueCount > 0 ? (totalSpent / issueCount).toFixed(2) : 0;
-
-      const usersMap = {};
-
-      for (const issue of filteredIssues) {
-        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
-        const hasLegacy = !!issue.assignee;
-        const recipients =
-          assignees.length > 0 ? assignees : hasLegacy ? [issue.assignee] : [];
-
-        for (const person of recipients) {
-          if (!person || !person.id) continue;
-          const uid = person.id;
-
-          if (!usersMap[uid]) {
-            usersMap[uid] = {
-              userId: uid,
-              username: person.username,
-              name: person.name,
-              avatar_url: person.avatar_url,
-              issueCount: 0,
-              spentTime: 0,
-              percentWork: 0,
-            };
-          }
-          usersMap[uid].issueCount += 1;
-          usersMap[uid].spentTime += issue.time_stats?.total_time_spent || 0;
+    // محاسبات و خروجی بر اساس filteredIssues
+    const totalSpent = filteredIssues.reduce(
+      (sum, issue) => sum + (issue.time_stats?.total_time_spent || 0),
+      0,
+    );
+    const issueCount = filteredIssues.length;
+    const uniqueUsers = new Set(
+      filteredIssues.flatMap((issue) => {
+        const assignees = Array.isArray(issue.assignees)
+          ? issue.assignees
+          : [];
+        const legacyAssignee = issue.assignee ? [issue.assignee] : [];
+        return [...assignees, ...legacyAssignee]
+          .map((a) => a?.id)
+          .filter(Boolean);
+      }),
+    ).size;
+    const avgSpentPerIssue =
+      issueCount > 0 ? (totalSpent / issueCount).toFixed(2) : 0;
+    const usersMap = {};
+    for (const issue of filteredIssues) {
+      const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+      const hasLegacy = !!issue.assignee;
+      const recipients =
+        assignees.length > 0 ? assignees : hasLegacy ? [issue.assignee] : [];
+      for (const person of recipients) {
+        if (!person || !person.id) continue;
+        const uid = person.id;
+        if (!usersMap[uid]) {
+          usersMap[uid] = {
+            userId: uid,
+            username: person.username,
+            name: person.name,
+            avatar_url: person.avatar_url,
+            issueCount: 0,
+            spentTime: 0,
+            percentWork: 0,
+          };
         }
+        usersMap[uid].issueCount += 1;
+        usersMap[uid].spentTime += issue.time_stats?.total_time_spent || 0;
       }
-
-      Object.values(usersMap).forEach((user) => {
-        user.percentWork =
-          totalSpent > 0 ? ((user.spentTime / totalSpent) * 100).toFixed(2) : 0;
-      });
-
-      results.push({
-        label,
+    }
+    Object.values(usersMap).forEach((user) => {
+      user.percentWork =
+        totalSpent > 0 ? ((user.spentTime / totalSpent) * 100).toFixed(2) : 0;
+    });
+    const results = [
+      {
+        labels: labelList,
         totalSpent,
         issueCount,
         uniqueUsers,
         avgSpentPerIssue,
         users: Object.values(usersMap),
-      });
-    }
-
+      },
+    ];
     res.json(results);
   } catch (error) {
     res.status(500).json({
