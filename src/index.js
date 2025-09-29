@@ -1041,8 +1041,9 @@ app.get("/daily", async (req, res) => {
       const params = new URLSearchParams();
       params.set("per_page", String(perPage));
       params.set("page", String(page));
-      // همه ایشوها (باز و بسته)
-      params.set("state", "all");
+
+      params.set("state", "opened"); // all TODO()
+
       const url = `${baseUUrl}/projects/${projectId}/issues?${params.toString()}`;
       const resp = await fetch(url, {
         method: "GET",
