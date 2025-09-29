@@ -1171,21 +1171,26 @@ app.get("/daily", async (req, res) => {
             if (!isAssignee) continue;
 
             const raw = String(note.body);
-            const m = raw.match(/deleted\s+([\dhms\s]+)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
-            if (!m) continue;
-            const duration = m[1];
-            const fromDate = m[2];
+            const m1 = raw.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+            if (!m1) continue;
+            const duration = m1[1];
+            const fromDate = m1[2];
             if (fromDate !== targetDate) continue; // حذف مربوط به همین روز باشد
 
             let seconds = 0;
-            const dMatch = duration.match(/(\d+)\s*d/);
-            const hMatch = duration.match(/(\d+)\s*h/);
-            const minMatch = duration.match(/(\d+)\s*m/);
-            const sMatch = duration.match(/(\d+)\s*s/);
-            if (dMatch) seconds += parseInt(dMatch[1], 10) * 86400;
-            if (hMatch) seconds += parseInt(hMatch[1], 10) * 3600;
-            if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
-            if (sMatch) seconds += parseInt(sMatch[1], 10);
+            const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+            let mm;
+            while ((mm = unitRe2.exec(duration)) !== null) {
+              const val = parseInt(mm[1], 10);
+              const unit = mm[2].toLowerCase();
+              if (Number.isNaN(val)) continue;
+              if (unit === "mo") seconds += val * 30 * 86400;
+              else if (unit === "w") seconds += val * 7 * 86400;
+              else if (unit === "d") seconds += val * 86400;
+              else if (unit === "h") seconds += val * 3600;
+              else if (unit === "m") seconds += val * 60;
+              else if (unit === "s") seconds += val;
+            }
             if (seconds === 0) continue;
             const delta = -seconds; // حذف به صورت منفی
 
@@ -1238,13 +1243,20 @@ app.get("/daily", async (req, res) => {
             const isAdd = body.includes("added") && body.includes("time spent");
             const isSub = body.includes("subtracted") && body.includes("time spent");
             if (!isAdd && !isSub) continue;
-            const hourMatch = body.match(/(\d+)\s*h/);
-            const minMatch = body.match(/(\d+)\s*m/);
-            const secMatch = body.match(/(\d+)\s*s/);
             let seconds = 0;
-            if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
-            if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
-            if (secMatch) seconds += parseInt(secMatch[1], 10);
+            const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+            let m;
+            while ((m = unitRe.exec(body)) !== null) {
+              const val = parseInt(m[1], 10);
+              const unit = m[2].toLowerCase();
+              if (Number.isNaN(val)) continue;
+              if (unit === "mo") seconds += val * 30 * 86400;
+              else if (unit === "w") seconds += val * 7 * 86400;
+              else if (unit === "d") seconds += val * 86400;
+              else if (unit === "h") seconds += val * 3600;
+              else if (unit === "m") seconds += val * 60;
+              else if (unit === "s") seconds += val;
+            }
             if (seconds === 0) continue;
             const uid = note.author.id;
             const isAssignee = recipients.some((p) => p && p.id === uid);
