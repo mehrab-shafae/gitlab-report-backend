@@ -1299,31 +1299,85 @@ app.get("/activity-range", async (req, res) => {
 
     // Fetch all issues from the single taskboard project (state=all)
     let allIssues = [];
-    let page = 1;
     const perPage = 100;
-    while (true) {
+    {
       const params = new URLSearchParams();
       params.set("per_page", String(perPage));
-      params.set("page", String(page));
+      params.set("page", "1");
       params.set("state", "all");
-      const url = `${baseUUrl}/projects/${projectId}/issues?${params.toString()}`;
-      const resp = await fetch(url, {
+      const firstUrl = `${baseUUrl}/projects/${projectId}/issues?${params.toString()}`;
+      const firstResp = await fetch(firstUrl, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
           "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+          "Connection": "keep-alive",
         },
       });
-      if (!resp.ok) break;
-      const batch = await resp.json();
-      if (!Array.isArray(batch) || batch.length === 0) break;
-      allIssues.push(...batch);
-      if (batch.length < perPage) break;
-      page++;
+      if (!firstResp.ok) {
+        return res.status(500).json({ message: "مشکل در گرفتن دیتا از GitLab" });
+      }
+      const firstBatch = await firstResp.json();
+      if (Array.isArray(firstBatch) && firstBatch.length > 0) {
+        allIssues.push(...firstBatch);
+      }
+      const totalPagesHeader = firstResp.headers.get("x-total-pages");
+      const totalPages = totalPagesHeader ? parseInt(totalPagesHeader, 10) : null;
+      if (totalPages && totalPages > 1) {
+        const pageNumbers = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+        const pageResults = await Promise.all(
+          pageNumbers.map(async (p) => {
+            const pParams = new URLSearchParams();
+            pParams.set("per_page", String(perPage));
+            pParams.set("page", String(p));
+            pParams.set("state", "all");
+            const url = `${baseUUrl}/projects/${projectId}/issues?${pParams.toString()}`;
+            const r = await fetch(url, {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+                "Connection": "keep-alive",
+              },
+            });
+            if (!r.ok) return [];
+            const chunk = await r.json();
+            return Array.isArray(chunk) ? chunk : [];
+          }),
+        );
+        for (const arr of pageResults) allIssues.push(...arr);
+      } else {
+        // Fallback pagination if headers are missing
+        let page = 2;
+        while (true) {
+          const params2 = new URLSearchParams();
+          params2.set("per_page", String(perPage));
+          params2.set("page", String(page));
+          params2.set("state", "all");
+          const url = `${baseUUrl}/projects/${projectId}/issues?${params2.toString()}`;
+          const resp = await fetch(url, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+              "Connection": "keep-alive",
+            },
+          });
+          if (!resp.ok) break;
+          const batch = await resp.json();
+          if (!Array.isArray(batch) || batch.length === 0) break;
+          allIssues.push(...batch);
+          if (batch.length < perPage) break;
+          page++;
+        }
+      }
     }
 
     const usersMap = {};
-    const limit = 5;
+    const limit = Math.max(
+      1,
+      Number(process.env.ACTIVITY_RANGE_CONCURRENCY || 5),
+    );
     const chunkArray = (arr, size) => {
       const out = [];
       for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -1343,18 +1397,35 @@ app.get("/activity-range", async (req, res) => {
           const targetAssignees = recipients.filter(
             (p) => p && userIds.includes(Number(p.id)),
           );
+          if (targetAssignees.length === 0) return; // No qualifying assignee → no qualifying notes/comments
+
+          // Fetch system and non-system notes in parallel
+          const [sysNotesResp, notesResp] = await Promise.all([
+            fetch(
+              `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
+              {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+                  "Connection": "keep-alive",
+                },
+              },
+            ),
+            fetch(
+              `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?per_page=100`,
+              {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+                  "Connection": "keep-alive",
+                },
+              },
+            ),
+          ]);
 
           // 1) System notes: time spent deltas within range, authored by target users who are assignees
-          const sysNotesResp = await fetch(
-            `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
-            {
-              method: "GET",
-              headers: {
-                "Content-Type": "application/json",
-                "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
-              },
-            },
-          );
           if (sysNotesResp.ok) {
             const notes = await sysNotesResp.json();
             for (const note of notes) {
@@ -1414,16 +1485,6 @@ app.get("/activity-range", async (req, res) => {
           }
 
           // 2) Non-system notes: count comments within range authored by target users who are assignees
-          const notesResp = await fetch(
-            `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?per_page=100`,
-            {
-              method: "GET",
-              headers: {
-                "Content-Type": "application/json",
-                "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
-              },
-            },
-          );
           if (notesResp.ok) {
             const notes = await notesResp.json();
             for (const note of notes) {
@@ -1477,6 +1538,48 @@ app.get("/activity-range", async (req, res) => {
         ? new Date(issue.updated_at).toISOString().slice(0, 10)
         : null;
       if (!updatedKey || !isInRange(updatedKey)) continue;
+      const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+      const legacy = issue.assignee ? [issue.assignee] : [];
+      const recipients = assignees.length > 0 ? assignees : legacy;
+      for (const person of recipients) {
+        if (!person || !person.id) continue;
+        const uid = Number(person.id);
+        if (!userIds.includes(uid)) continue;
+        if (!usersMap[uid]) {
+          usersMap[uid] = {
+            userId: uid,
+            username: person.username,
+            name: person.name,
+            avatar_url: person.avatar_url,
+            totalSpent: 0,
+            issues: {},
+            labels: new Set(),
+          };
+        }
+        if (!usersMap[uid].issues[issue.iid]) {
+          usersMap[uid].issues[issue.iid] = {
+            iid: issue.iid,
+            title: issue.title,
+            labels: issue.labels,
+            time_stats: issue.time_stats,
+            milestone: issue.milestone,
+            updated_at: issue.updated_at,
+            spentInRange: 0,
+            commentsInRange: 0,
+          };
+          if (Array.isArray(issue.labels)) {
+            issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+          }
+        }
+      }
+    }
+
+    // 3b) Include issues created within range for those users (even if no notes/comments)
+    for (const issue of allIssues) {
+      const createdKey = issue.created_at
+        ? new Date(issue.created_at).toISOString().slice(0, 10)
+        : null;
+      if (!createdKey || !isInRange(createdKey)) continue;
       const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
       const legacy = issue.assignee ? [issue.assignee] : [];
       const recipients = assignees.length > 0 ? assignees : legacy;
