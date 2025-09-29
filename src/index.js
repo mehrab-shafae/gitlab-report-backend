@@ -1258,6 +1258,280 @@ app.get("/daily", async (req, res) => {
   }
 });
 
+// Activity over a date range for specific users (state=all, fixed project)
+app.get("/activity-range", async (req, res) => {
+  try {
+    const baseUUrl = process.env.GITLAB_BASE_URL;
+    const projectId = process.env.GITLAB_PROJECT_ID;
+    const { users, from, to } = req.query;
+
+    if (!projectId) {
+      return res.status(400).json({ message: "GITLAB_PROJECT_ID مشخص نشده است" });
+    }
+    if (!users || !from || !to) {
+      return res
+        .status(400)
+        .json({ message: "پارامترهای users, from, to الزامی هستند" });
+    }
+
+    const userIds = String(users)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => Number(s))
+      .filter((n) => !Number.isNaN(n));
+    if (userIds.length === 0) {
+      return res.status(400).json({ message: "حداقل یک userId معتبر لازم است" });
+    }
+
+    // Normalize date range (inclusive) in UTC YYYY-MM-DD
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      return res.status(400).json({ message: "فرمت تاریخ از/تا نامعتبر است" });
+    }
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const toKey = (d) =>
+      `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    const startKey = toKey(fromDate);
+    const endKey = toKey(toDate);
+    const isInRange = (isoDate) => isoDate >= startKey && isoDate <= endKey;
+
+    // Fetch all issues from the single taskboard project (state=all)
+    let allIssues = [];
+    let page = 1;
+    const perPage = 100;
+    while (true) {
+      const params = new URLSearchParams();
+      params.set("per_page", String(perPage));
+      params.set("page", String(page));
+      params.set("state", "all");
+      const url = `${baseUUrl}/projects/${projectId}/issues?${params.toString()}`;
+      const resp = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+        },
+      });
+      if (!resp.ok) break;
+      const batch = await resp.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      allIssues.push(...batch);
+      if (batch.length < perPage) break;
+      page++;
+    }
+
+    const usersMap = {};
+    const limit = 5;
+    const chunkArray = (arr, size) => {
+      const out = [];
+      for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+      return out;
+    };
+    const issueChunks = chunkArray(allIssues, limit);
+
+    for (const chunk of issueChunks) {
+      await Promise.all(
+        chunk.map(async (issue) => {
+          if (!issue?.iid) return;
+          const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+          const legacy = issue.assignee ? [issue.assignee] : [];
+          const recipients = assignees.length > 0 ? assignees : legacy;
+
+          // Only consider if at least one of target users is an assignee
+          const targetAssignees = recipients.filter(
+            (p) => p && userIds.includes(Number(p.id)),
+          );
+
+          // 1) System notes: time spent deltas within range, authored by target users who are assignees
+          const sysNotesResp = await fetch(
+            `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+              },
+            },
+          );
+          if (sysNotesResp.ok) {
+            const notes = await sysNotesResp.json();
+            for (const note of notes) {
+              if (!note?.body || !note?.created_at || !note?.author?.id) continue;
+              const noteKey = new Date(note.created_at)
+                .toISOString()
+                .slice(0, 10);
+              if (!isInRange(noteKey)) continue;
+              const authorId = Number(note.author.id);
+              if (!userIds.includes(authorId)) continue;
+              const isAssignee = recipients.some((p) => p && Number(p.id) === authorId);
+              if (!isAssignee) continue;
+              const body = String(note.body).toLowerCase();
+              const isAdd = body.includes("added") && body.includes("time spent");
+              const isSub = body.includes("subtracted") && body.includes("time spent");
+              if (!isAdd && !isSub) continue;
+              const hourMatch = body.match(/(\d+)\s*h/);
+              const minMatch = body.match(/(\d+)\s*m/);
+              const secMatch = body.match(/(\d+)\s*s/);
+              let seconds = 0;
+              if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
+              if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
+              if (secMatch) seconds += parseInt(secMatch[1], 10);
+              if (seconds === 0) continue;
+
+              if (!usersMap[authorId]) {
+                usersMap[authorId] = {
+                  userId: authorId,
+                  username: note.author.username || "",
+                  name: note.author.name || "",
+                  avatar_url: note.author.avatar_url || "",
+                  totalSpent: 0,
+                  issues: {},
+                  labels: new Set(),
+                };
+              }
+              usersMap[authorId].totalSpent += isSub ? -seconds : seconds;
+              if (!usersMap[authorId].issues[issue.iid]) {
+                usersMap[authorId].issues[issue.iid] = {
+                  iid: issue.iid,
+                  title: issue.title,
+                  labels: issue.labels,
+                  time_stats: issue.time_stats,
+                  milestone: issue.milestone,
+                  updated_at: issue.updated_at,
+                  spentInRange: 0,
+                  commentsInRange: 0,
+                };
+                if (Array.isArray(issue.labels)) {
+                  issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
+                }
+              }
+              usersMap[authorId].issues[issue.iid].spentInRange += isSub
+                ? -seconds
+                : seconds;
+            }
+          }
+
+          // 2) Non-system notes: count comments within range authored by target users who are assignees
+          const notesResp = await fetch(
+            `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?per_page=100`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+              },
+            },
+          );
+          if (notesResp.ok) {
+            const notes = await notesResp.json();
+            for (const note of notes) {
+              if (note?.system) continue; // skip system; handled above
+              if (!note?.created_at || !note?.author?.id) continue;
+              const noteKey = new Date(note.created_at)
+                .toISOString()
+                .slice(0, 10);
+              if (!isInRange(noteKey)) continue;
+              const authorId = Number(note.author.id);
+              if (!userIds.includes(authorId)) continue;
+              const isAssignee = recipients.some((p) => p && Number(p.id) === authorId);
+              if (!isAssignee) continue;
+
+              if (!usersMap[authorId]) {
+                usersMap[authorId] = {
+                  userId: authorId,
+                  username: note.author.username || "",
+                  name: note.author.name || "",
+                  avatar_url: note.author.avatar_url || "",
+                  totalSpent: 0,
+                  issues: {},
+                  labels: new Set(),
+                };
+              }
+              if (!usersMap[authorId].issues[issue.iid]) {
+                usersMap[authorId].issues[issue.iid] = {
+                  iid: issue.iid,
+                  title: issue.title,
+                  labels: issue.labels,
+                  time_stats: issue.time_stats,
+                  milestone: issue.milestone,
+                  updated_at: issue.updated_at,
+                  spentInRange: 0,
+                  commentsInRange: 0,
+                };
+                if (Array.isArray(issue.labels)) {
+                  issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
+                }
+              }
+              usersMap[authorId].issues[issue.iid].commentsInRange += 1;
+            }
+          }
+        }),
+      );
+    }
+
+    // 3) Include issues updated within range for those users (even if no notes/comments)
+    for (const issue of allIssues) {
+      const updatedKey = issue.updated_at
+        ? new Date(issue.updated_at).toISOString().slice(0, 10)
+        : null;
+      if (!updatedKey || !isInRange(updatedKey)) continue;
+      const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+      const legacy = issue.assignee ? [issue.assignee] : [];
+      const recipients = assignees.length > 0 ? assignees : legacy;
+      for (const person of recipients) {
+        if (!person || !person.id) continue;
+        const uid = Number(person.id);
+        if (!userIds.includes(uid)) continue;
+        if (!usersMap[uid]) {
+          usersMap[uid] = {
+            userId: uid,
+            username: person.username,
+            name: person.name,
+            avatar_url: person.avatar_url,
+            totalSpent: 0,
+            issues: {},
+            labels: new Set(),
+          };
+        }
+        if (!usersMap[uid].issues[issue.iid]) {
+          usersMap[uid].issues[issue.iid] = {
+            iid: issue.iid,
+            title: issue.title,
+            labels: issue.labels,
+            time_stats: issue.time_stats,
+            milestone: issue.milestone,
+            updated_at: issue.updated_at,
+            spentInRange: 0,
+            commentsInRange: 0,
+          };
+          if (Array.isArray(issue.labels)) {
+            issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+          }
+        }
+      }
+    }
+
+    const results = Object.values(usersMap).map((u) => ({
+      userId: u.userId,
+      username: u.username,
+      name: u.name,
+      avatar_url: u.avatar_url,
+      totalSpent: u.totalSpent || 0,
+      issues: Object.values(u.issues),
+      labels: Array.from(u.labels),
+    }));
+
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({
+      message: "خطا در تولید گزارش بازه‌ای فعالیت کاربران",
+      error: error?.message || String(error),
+    });
+  }
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
