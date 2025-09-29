@@ -605,23 +605,53 @@ app.get("/milestone-daily-spends", async (req, res) => {
       return res.status(400).json({ message: "milestone الزامی است" });
     }
 
-    // Parse time delta from system note body
+    // Parse time delta from system note body: supports mo,w,d,h,m,s and deletion notes
     const parseSpentFromNote = (body) => {
-      if (typeof body !== "string") return 0;
+      if (typeof body !== "string") return { seconds: 0, forDate: null };
       const lowered = body.toLowerCase();
+      // Deletion form: "deleted X of spent time from YYYY-MM-DD"
+      const del = lowered.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+      const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+      const H = 3600;
+      const D = 8 * H; // GitLab: 1d = 8h
+      const W = 5 * D; // GitLab: 1w = 5d
+      const MO = 4 * W; // GitLab: 1mo = 4w
+      if (del) {
+        const duration = del[1];
+        const forDate = del[2];
+        let seconds = 0;
+        let m;
+        while ((m = unitRe.exec(duration)) !== null) {
+          const val = parseInt(m[1], 10);
+          const unit = m[2].toLowerCase();
+          if (Number.isNaN(val)) continue;
+          if (unit === "mo") seconds += val * MO;
+          else if (unit === "w") seconds += val * W;
+          else if (unit === "d") seconds += val * D;
+          else if (unit === "h") seconds += val * H;
+          else if (unit === "m") seconds += val * 60;
+          else if (unit === "s") seconds += val;
+        }
+        return { seconds: -seconds, forDate };
+      }
       const isAdd = lowered.includes("added") && lowered.includes("time spent");
-      const isSub =
-        lowered.includes("subtracted") && lowered.includes("time spent");
-      if (!isAdd && !isSub) return 0;
-      const hourMatch = lowered.match(/(\d+)\s*h/);
-      const minMatch = lowered.match(/(\d+)\s*m/);
-      const secMatch = lowered.match(/(\d+)\s*s/);
+      const isSub = lowered.includes("subtracted") && lowered.includes("time spent");
+      if (!isAdd && !isSub) return { seconds: 0, forDate: null };
       let seconds = 0;
-      if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
-      if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
-      if (secMatch) seconds += parseInt(secMatch[1], 10);
-      if (seconds === 0) return 0;
-      return isSub ? -seconds : seconds;
+      let mm;
+      while ((mm = unitRe.exec(lowered)) !== null) {
+        const val = parseInt(mm[1], 10);
+        const unit = mm[2].toLowerCase();
+        if (Number.isNaN(val)) continue;
+        if (unit === "mo") seconds += val * MO;
+        else if (unit === "w") seconds += val * W;
+        else if (unit === "d") seconds += val * D;
+        else if (unit === "h") seconds += val * H;
+        else if (unit === "m") seconds += val * 60;
+        else if (unit === "s") seconds += val;
+      }
+      if (seconds === 0) return { seconds: 0, forDate: null };
+      return { seconds: isSub ? -seconds : seconds, forDate: null };
     };
 
     let projectIds = [];
@@ -657,10 +687,11 @@ app.get("/milestone-daily-spends", async (req, res) => {
 
         for (const note of notes) {
           if (!note?.body || !note?.created_at || !note?.author?.id) continue;
-          const deltaSeconds = parseSpentFromNote(note.body);
+          const { seconds: deltaSeconds, forDate } = parseSpentFromNote(note.body);
           if (deltaSeconds === 0) continue;
 
-          const dateKey = new Date(note.created_at).toISOString().slice(0, 10);
+          // Use referenced date for deletions; otherwise use note.created_at day
+          const dateKey = forDate || new Date(note.created_at).toISOString().slice(0, 10);
           const author = note.author;
           const uid = author.id;
 
@@ -878,24 +909,52 @@ app.get("/daily-report", async (req, res) => {
       return res.status(400).json({ message: e?.message || String(e) });
     }
 
-    // Helper: parse seconds from note body like "added 1h 30m of time spent" or "subtracted 10m of time spent"
+    // Helper: robust parse for time spent including deletions and full units
     const parseSpentFromNote = (body) => {
-      if (typeof body !== "string") return 0;
+      if (typeof body !== "string") return { seconds: 0, forDate: null };
       const lowered = body.toLowerCase();
+      const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+      const H = 3600;
+      const D = 8 * H;
+      const W = 5 * D;
+      const MO = 4 * W;
+      // Deletion form attributes to a specific date
+      const del = lowered.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+      if (del) {
+        const duration = del[1];
+        const forDate = del[2];
+        let seconds = 0;
+        let m;
+        while ((m = unitRe.exec(duration)) !== null) {
+          const val = parseInt(m[1], 10);
+          const unit = m[2].toLowerCase();
+          if (Number.isNaN(val)) continue;
+          if (unit === "mo") seconds += val * MO;
+          else if (unit === "w") seconds += val * W;
+          else if (unit === "d") seconds += val * D;
+          else if (unit === "h") seconds += val * H;
+          else if (unit === "m") seconds += val * 60;
+          else if (unit === "s") seconds += val;
+        }
+        return { seconds: -seconds, forDate };
+      }
       const isAdd = lowered.includes("added") && lowered.includes("time spent");
-      const isSub =
-        lowered.includes("subtracted") && lowered.includes("time spent");
-      if (!isAdd && !isSub) return 0;
-      // match numbers like 1h, 30m, 45s
-      const hourMatch = lowered.match(/(\d+)\s*h/);
-      const minMatch = lowered.match(/(\d+)\s*m/);
-      const secMatch = lowered.match(/(\d+)\s*s/);
+      const isSub = lowered.includes("subtracted") && lowered.includes("time spent");
+      if (!isAdd && !isSub) return { seconds: 0, forDate: null };
       let seconds = 0;
-      if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
-      if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
-      if (secMatch) seconds += parseInt(secMatch[1], 10);
-      if (seconds === 0) return 0;
-      return isSub ? -seconds : seconds;
+      let mm;
+      while ((mm = unitRe.exec(lowered)) !== null) {
+        const val = parseInt(mm[1], 10);
+        const unit = mm[2].toLowerCase();
+        if (Number.isNaN(val)) continue;
+        if (unit === "mo") seconds += val * MO;
+        else if (unit === "w") seconds += val * W;
+        else if (unit === "d") seconds += val * D;
+        else if (unit === "h") seconds += val * H;
+        else if (unit === "m") seconds += val * 60;
+        else if (unit === "s") seconds += val;
+      }
+      return { seconds: isSub ? -seconds : seconds, forDate: null };
     };
 
     // Per-user aggregation map
@@ -928,10 +987,12 @@ app.get("/daily-report", async (req, res) => {
           const createdAt = note.created_at;
           if (!createdAt || !note.body) continue;
           const noteDate = new Date(createdAt).toISOString().slice(0, 10);
-          if (noteDate !== targetDate) continue;
 
-          const deltaSeconds = parseSpentFromNote(note.body);
+          const { seconds: deltaSeconds, forDate } = parseSpentFromNote(note.body);
           if (deltaSeconds === 0) continue;
+          // If deletion references another date, attribute to that date; otherwise use noteDate
+          const targetKey = forDate || noteDate;
+          if (targetKey !== targetDate) continue;
 
           const author = note.author || {};
           const uid = author.id;
@@ -1619,22 +1680,94 @@ app.get("/activity-range", async (req, res) => {
               const noteKey = new Date(note.created_at)
                 .toISOString()
                 .slice(0, 10);
-              if (!isInRange(noteKey)) continue;
               const authorId = Number(note.author.id);
               if (!userIds.includes(authorId)) continue;
               const isAssignee = recipients.some((p) => p && Number(p.id) === authorId);
               if (!isAssignee) continue;
               const body = String(note.body).toLowerCase();
+              // Handle explicit deletion notes: "deleted X of spent time from YYYY-MM-DD"
+              const delMatch = body.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+              if (delMatch) {
+                const duration = delMatch[1];
+                const fromDateKey = delMatch[2];
+                // Attribute deletion to the referenced date if it falls in range
+                if (!isInRange(fromDateKey)) continue;
+                let seconds = 0;
+                const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                let m;
+                const H = 3600;
+                const D = 8 * H; // GitLab: 1d = 8h
+                const W = 5 * D; // GitLab: 1w = 5d
+                const MO = 4 * W; // GitLab: 1mo = 4w
+                while ((m = unitRe2.exec(duration)) !== null) {
+                  const val = parseInt(m[1], 10);
+                  const unit = m[2].toLowerCase();
+                  if (Number.isNaN(val)) continue;
+                  if (unit === "mo") seconds += val * MO;
+                  else if (unit === "w") seconds += val * W;
+                  else if (unit === "d") seconds += val * D;
+                  else if (unit === "h") seconds += val * H;
+                  else if (unit === "m") seconds += val * 60;
+                  else if (unit === "s") seconds += val;
+                }
+                if (seconds === 0) continue;
+
+                if (!usersMap[authorId]) {
+                  usersMap[authorId] = {
+                    userId: authorId,
+                    username: note.author.username || "",
+                    name: note.author.name || "",
+                    avatar_url: note.author.avatar_url || "",
+                    totalSpent: 0,
+                    issues: {},
+                    labels: new Set(),
+                  };
+                }
+                // Deletions subtract time
+                usersMap[authorId].totalSpent -= seconds;
+                if (!usersMap[authorId].issues[issue.iid]) {
+                  usersMap[authorId].issues[issue.iid] = {
+                    iid: issue.iid,
+                    title: issue.title,
+                    labels: issue.labels,
+                    time_stats: issue.time_stats,
+                    milestone: issue.milestone,
+                    created_at: issue.created_at,
+                    updated_at: issue.updated_at,
+                    spentInRange: 0,
+                    commentsInRange: 0,
+                  };
+                  if (Array.isArray(issue.labels)) {
+                    issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
+                  }
+                }
+                usersMap[authorId].issues[issue.iid].spentInRange -= seconds;
+                continue;
+              }
+
+              // Normal add/subtract entries; attribute to note date if in range
+              if (!isInRange(noteKey)) continue;
               const isAdd = body.includes("added") && body.includes("time spent");
               const isSub = body.includes("subtracted") && body.includes("time spent");
               if (!isAdd && !isSub) continue;
-              const hourMatch = body.match(/(\d+)\s*h/);
-              const minMatch = body.match(/(\d+)\s*m/);
-              const secMatch = body.match(/(\d+)\s*s/);
               let seconds = 0;
-              if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
-              if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
-              if (secMatch) seconds += parseInt(secMatch[1], 10);
+              const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+              let mm;
+              const H = 3600;
+              const D = 8 * H; // GitLab: 1d = 8h
+              const W = 5 * D; // GitLab: 1w = 5d
+              const MO = 4 * W; // GitLab: 1mo = 4w
+              while ((mm = unitRe.exec(body)) !== null) {
+                const val = parseInt(mm[1], 10);
+                const unit = mm[2].toLowerCase();
+                if (Number.isNaN(val)) continue;
+                if (unit === "mo") seconds += val * MO;
+                else if (unit === "w") seconds += val * W;
+                else if (unit === "d") seconds += val * D;
+                else if (unit === "h") seconds += val * H;
+                else if (unit === "m") seconds += val * 60;
+                else if (unit === "s") seconds += val;
+              }
               if (seconds === 0) continue;
 
               if (!usersMap[authorId]) {
@@ -1656,6 +1789,7 @@ app.get("/activity-range", async (req, res) => {
                   labels: issue.labels,
                   time_stats: issue.time_stats,
                   milestone: issue.milestone,
+                  created_at: issue.created_at,
                   updated_at: issue.updated_at,
                   spentInRange: 0,
                   commentsInRange: 0,
@@ -1664,9 +1798,7 @@ app.get("/activity-range", async (req, res) => {
                   issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
                 }
               }
-              usersMap[authorId].issues[issue.iid].spentInRange += isSub
-                ? -seconds
-                : seconds;
+              usersMap[authorId].issues[issue.iid].spentInRange += isSub ? -seconds : seconds;
             }
           }
 
@@ -1703,6 +1835,7 @@ app.get("/activity-range", async (req, res) => {
                   labels: issue.labels,
                   time_stats: issue.time_stats,
                   milestone: issue.milestone,
+                  created_at: issue.created_at,
                   updated_at: issue.updated_at,
                   spentInRange: 0,
                   commentsInRange: 0,
