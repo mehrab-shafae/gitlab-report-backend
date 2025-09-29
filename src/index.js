@@ -1091,41 +1091,47 @@ app.get("/daily", async (req, res) => {
             },
           },
         );
+        let systemNotes = [];
         if (notesResp.ok) {
-          const notes = await notesResp.json();
-          for (const note of notes) {
-            if (!note?.body || !note?.created_at || !note?.author?.id) continue;
-            const noteDate = new Date(note.created_at).toISOString().slice(0, 10);
-            if (noteDate !== targetDate) continue;
-            const body = note.body.toLowerCase();
-            const isAdd = body.includes("added") && body.includes("time spent");
-            const isSub = body.includes("subtracted") && body.includes("time spent");
-            if (!isAdd && !isSub) continue;
-            const hourMatch = body.match(/(\d+)\s*h/);
-            const minMatch = body.match(/(\d+)\s*m/);
-            const secMatch = body.match(/(\d+)\s*s/);
-            let seconds = 0;
-            if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
-            if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
-            if (secMatch) seconds += parseInt(secMatch[1], 10);
-            if (seconds === 0) continue;
-            const uid = note.author.id;
-            // فقط اگر نویسنده note جزو assignee های این ایشو باشد
+          systemNotes = await notesResp.json();
+        }
+
+        // ۱-الف) منبع اصلی محاسبه: رویدادهای time tracking
+        let hasAnyEventForIssueToday = false;
+        const eventsResp = await fetch(
+          `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/resource_time_tracking_events?per_page=100`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+            },
+          },
+        );
+        if (eventsResp.ok) {
+          const events = await eventsResp.json();
+          for (const ev of events) {
+            const evDate = ev?.created_at ? new Date(ev.created_at).toISOString().slice(0, 10) : null;
+            if (evDate !== targetDate) continue;
+            const uid = ev?.user?.id;
+            if (!uid) continue;
             const isAssignee = recipients.some((p) => p && p.id === uid);
             if (!isAssignee) continue;
+            const delta = Number(ev.time_spent) || 0; // مثبت یا منفی
+            if (delta === 0) continue;
+            hasAnyEventForIssueToday = true;
 
             if (!usersMap[uid]) {
               usersMap[uid] = {
                 userId: uid,
-                username: note.author.username || "",
-                name: note.author.name || "",
-                avatar_url: note.author.avatar_url || "",
+                username: ev.user.username || "",
+                name: ev.user.name || "",
+                avatar_url: ev.user.avatar_url || "",
                 dailySpent: 0,
                 issues: {},
                 labels: new Set(),
               };
             }
-            usersMap[uid].dailySpent += isSub ? -seconds : seconds;
             if (!usersMap[uid].issues[issue.iid]) {
               usersMap[uid].issues[issue.iid] = {
                 iid: issue.iid,
@@ -1142,12 +1148,144 @@ app.get("/daily", async (req, res) => {
                 issue.labels.forEach((l) => usersMap[uid].labels.add(l));
               }
             }
-            usersMap[uid].issues[issue.iid].dailySpent += isSub ? -seconds : seconds;
+            usersMap[uid].dailySpent += delta;
+            usersMap[uid].issues[issue.iid].dailySpent += delta;
+            usersMap[uid].issues[issue.iid].activityLogs.push({
+              type: "time_spent_changed",
+              at: ev.created_at,
+              by: uid,
+              details: { seconds: delta },
+              body: "",
+            });
+          }
+        }
+
+        // ۱-الف-تکمیلی) اعمال حذف‌ها: system note هایی که فرمت "deleted X of spent time from YYYY-MM-DD" دارند
+        if (Array.isArray(systemNotes) && systemNotes.length > 0) {
+          for (const note of systemNotes) {
+            if (!note?.body || !note?.created_at || !note?.author?.id) continue;
+            const createdKey = new Date(note.created_at).toISOString().slice(0, 10);
+            if (createdKey !== targetDate) continue; // فقط نوت‌های ساخته‌شده امروز
+            const uid = note.author.id;
+            const isAssignee = recipients.some((p) => p && p.id === uid);
+            if (!isAssignee) continue;
+
+            const raw = String(note.body);
+            const m = raw.match(/deleted\s+([\dhms\s]+)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+            if (!m) continue;
+            const duration = m[1];
+            const fromDate = m[2];
+            if (fromDate !== targetDate) continue; // حذف مربوط به همین روز باشد
+
+            let seconds = 0;
+            const dMatch = duration.match(/(\d+)\s*d/);
+            const hMatch = duration.match(/(\d+)\s*h/);
+            const minMatch = duration.match(/(\d+)\s*m/);
+            const sMatch = duration.match(/(\d+)\s*s/);
+            if (dMatch) seconds += parseInt(dMatch[1], 10) * 86400;
+            if (hMatch) seconds += parseInt(hMatch[1], 10) * 3600;
+            if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
+            if (sMatch) seconds += parseInt(sMatch[1], 10);
+            if (seconds === 0) continue;
+            const delta = -seconds; // حذف به صورت منفی
+
+            if (!usersMap[uid]) {
+              usersMap[uid] = {
+                userId: uid,
+                username: note.author.username || "",
+                name: note.author.name || "",
+                avatar_url: note.author.avatar_url || "",
+                dailySpent: 0,
+                issues: {},
+                labels: new Set(),
+              };
+            }
+            if (!usersMap[uid].issues[issue.iid]) {
+              usersMap[uid].issues[issue.iid] = {
+                iid: issue.iid,
+                title: issue.title,
+                labels: issue.labels,
+                time_stats: issue.time_stats,
+                milestone: issue.milestone,
+                updated_at: issue.updated_at,
+                dailySpent: 0,
+                commentsToday: 0,
+                activityLogs: [],
+              };
+              if (Array.isArray(issue.labels)) {
+                issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+              }
+            }
+            usersMap[uid].dailySpent += delta;
+            usersMap[uid].issues[issue.iid].dailySpent += delta;
             usersMap[uid].issues[issue.iid].activityLogs.push({
               type: "time_spent_changed",
               at: note.created_at,
               by: uid,
-              details: { seconds: isSub ? -seconds : seconds },
+              details: { seconds: delta },
+              body: raw,
+            });
+          }
+        }
+
+        // ۱-ب) fallback: اگر events امروز موجود نبود، از system notes parse کن
+        if (!hasAnyEventForIssueToday && Array.isArray(systemNotes) && systemNotes.length > 0) {
+          for (const note of systemNotes) {
+            if (!note?.body || !note?.created_at || !note?.author?.id) continue;
+            const noteDate = new Date(note.created_at).toISOString().slice(0, 10);
+            if (noteDate !== targetDate) continue;
+            const body = String(note.body).toLowerCase();
+            const isAdd = body.includes("added") && body.includes("time spent");
+            const isSub = body.includes("subtracted") && body.includes("time spent");
+            if (!isAdd && !isSub) continue;
+            const hourMatch = body.match(/(\d+)\s*h/);
+            const minMatch = body.match(/(\d+)\s*m/);
+            const secMatch = body.match(/(\d+)\s*s/);
+            let seconds = 0;
+            if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
+            if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
+            if (secMatch) seconds += parseInt(secMatch[1], 10);
+            if (seconds === 0) continue;
+            const uid = note.author.id;
+            const isAssignee = recipients.some((p) => p && p.id === uid);
+            if (!isAssignee) continue;
+
+            const delta = isSub ? -seconds : seconds;
+
+            if (!usersMap[uid]) {
+              usersMap[uid] = {
+                userId: uid,
+                username: note.author.username || "",
+                name: note.author.name || "",
+                avatar_url: note.author.avatar_url || "",
+                dailySpent: 0,
+                issues: {},
+                labels: new Set(),
+              };
+            }
+            if (!usersMap[uid].issues[issue.iid]) {
+              usersMap[uid].issues[issue.iid] = {
+                iid: issue.iid,
+                title: issue.title,
+                labels: issue.labels,
+                time_stats: issue.time_stats,
+                milestone: issue.milestone,
+                updated_at: issue.updated_at,
+                dailySpent: 0,
+                commentsToday: 0,
+                activityLogs: [],
+              };
+              if (Array.isArray(issue.labels)) {
+                issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+              }
+            }
+            usersMap[uid].dailySpent += delta;
+            usersMap[uid].issues[issue.iid].dailySpent += delta;
+            usersMap[uid].issues[issue.iid].activityLogs.push({
+              type: "time_spent_changed",
+              at: note.created_at,
+              by: uid,
+              details: { seconds: delta },
               body: note.body,
             });
           }
