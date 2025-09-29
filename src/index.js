@@ -117,6 +117,16 @@ app.get("/labels", async (req, res) => {
         .json({ message: "projectId مشخص نیست (query یا .env)" });
     }
 
+    // دریافت لیبل‌های ورودی برای AND search
+    let andLabels = [];
+    if (req.query.labels) {
+      if (Array.isArray(req.query.labels)) {
+        andLabels = req.query.labels;
+      } else if (typeof req.query.labels === "string") {
+        andLabels = req.query.labels.split(",").map((l) => l.trim()).filter(Boolean);
+      }
+    }
+
     const params = new URLSearchParams({
       per_page: "100",
       with_counts: (req.query.with_counts ?? "true").toString(),
@@ -156,6 +166,49 @@ app.get("/labels", async (req, res) => {
         break;
 
       page = parseInt(nextPageHeader, 10) || page + 1;
+    }
+
+    // اگر لیبل برای AND search داده شده بود، فقط لیبل‌هایی را نگه دار که روی ایشویی باشند که همه لیبل‌ها را دارد
+    if (andLabels.length > 0) {
+      // گرفتن همه ایشوهای پروژه
+      let issues = [];
+      let issuePage = 1;
+      const perPage = 100;
+      while (true) {
+        const issueParams = new URLSearchParams({
+          per_page: String(perPage),
+          page: String(issuePage),
+          state: "all",
+        });
+        const issuesUrl = `${baseUUrl}/projects/${encodeURIComponent(projectId)}/issues?${issueParams.toString()}`;
+        const issuesResp = await fetch(issuesUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "PRIVATE-TOKEN": token,
+          },
+        });
+        if (!issuesResp.ok) break;
+        const issuesChunk = await issuesResp.json();
+        if (!Array.isArray(issuesChunk) || issuesChunk.length === 0) break;
+        issues.push(...issuesChunk);
+        if (issuesChunk.length < perPage) break;
+        issuePage++;
+      }
+      // پیدا کردن لیبل‌هایی که روی ایشویی هستند که همه لیبل‌های داده‌شده را دارد
+      const labelSet = new Set();
+      for (const issue of issues) {
+        if (!Array.isArray(issue.labels)) continue;
+        // اگر issue همه لیبل‌های andLabels را دارد
+        if (andLabels.every((l) => issue.labels.includes(l))) {
+          for (const l of issue.labels) {
+            labelSet.add(l);
+          }
+        }
+      }
+      // فقط لیبل‌هایی را نگه دار که در labelSet هستند
+      const filteredLabels = allLabels.filter((lbl) => labelSet.has(lbl.name));
+      return res.json({ status: "success", data: filteredLabels });
     }
 
     res.json({ status: "success", data: allLabels });
