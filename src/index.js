@@ -1136,12 +1136,20 @@ app.get("/daily", async (req, res) => {
                 updated_at: issue.updated_at,
                 dailySpent: 0,
                 commentsToday: 0,
+                activityLogs: [],
               };
               if (Array.isArray(issue.labels)) {
                 issue.labels.forEach((l) => usersMap[uid].labels.add(l));
               }
             }
             usersMap[uid].issues[issue.iid].dailySpent += isSub ? -seconds : seconds;
+            usersMap[uid].issues[issue.iid].activityLogs.push({
+              type: "time_spent_changed",
+              at: note.created_at,
+              by: uid,
+              details: { seconds: isSub ? -seconds : seconds },
+              body: note.body,
+            });
           }
         }
 
@@ -1189,12 +1197,27 @@ app.get("/daily", async (req, res) => {
                 updated_at: issue.updated_at,
                 dailySpent: 0,
                 commentsToday: 0,
+                activityLogs: [],
               };
               if (Array.isArray(issue.labels)) {
                 issue.labels.forEach((l) => usersMap[uid].labels.add(l));
               }
             }
             usersMap[uid].issues[issue.iid].commentsToday += 1;
+            const lastEditedAt = note.last_edited_at || note.updated_at;
+            const editor = note.last_edited_by || note.editor || note.author;
+            if (lastEditedAt) {
+              const editDate = new Date(lastEditedAt).toISOString().slice(0, 10);
+              if (editDate === targetDate && editor && editor.id === uid && note.created_at !== lastEditedAt) {
+                usersMap[uid].issues[issue.iid].activityLogs.push({
+                  type: "note_edited",
+                  at: lastEditedAt,
+                  by: uid,
+                  details: { id: note.id },
+                  body: typeof note.body === "string" ? note.body.slice(0, 200) : "",
+                });
+              }
+            }
           }
         }
       }));
@@ -1231,6 +1254,7 @@ app.get("/daily", async (req, res) => {
             updated_at: issue.updated_at,
             dailySpent: usersMap[uid].issues[issue.iid]?.dailySpent || 0,
             commentsToday: usersMap[uid].issues[issue.iid]?.commentsToday || 0,
+            activityLogs: usersMap[uid].issues[issue.iid]?.activityLogs || [],
           };
           if (Array.isArray(issue.labels)) {
             issue.labels.forEach((l) => usersMap[uid].labels.add(l));
