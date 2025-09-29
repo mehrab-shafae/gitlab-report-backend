@@ -1139,6 +1139,7 @@ app.get("/daily", async (req, res) => {
                 labels: issue.labels,
                 time_stats: issue.time_stats,
                 milestone: issue.milestone,
+                created_at: issue.created_at,
                 updated_at: issue.updated_at,
                 dailySpent: 0,
                 commentsToday: 0,
@@ -1184,10 +1185,14 @@ app.get("/daily", async (req, res) => {
               const val = parseInt(mm[1], 10);
               const unit = mm[2].toLowerCase();
               if (Number.isNaN(val)) continue;
-              if (unit === "mo") seconds += val * 30 * 86400;
-              else if (unit === "w") seconds += val * 7 * 86400;
-              else if (unit === "d") seconds += val * 86400;
-              else if (unit === "h") seconds += val * 3600;
+              const H = 3600;
+              const D = 8 * H; // GitLab: 1d = 8h
+              const W = 5 * D; // GitLab: 1w = 5d
+              const MO = 4 * W; // GitLab: 1mo = 4w
+              if (unit === "mo") seconds += val * MO;
+              else if (unit === "w") seconds += val * W;
+              else if (unit === "d") seconds += val * D;
+              else if (unit === "h") seconds += val * H;
               else if (unit === "m") seconds += val * 60;
               else if (unit === "s") seconds += val;
             }
@@ -1212,6 +1217,7 @@ app.get("/daily", async (req, res) => {
                 labels: issue.labels,
                 time_stats: issue.time_stats,
                 milestone: issue.milestone,
+                created_at: issue.created_at,
                 updated_at: issue.updated_at,
                 dailySpent: 0,
                 commentsToday: 0,
@@ -1250,10 +1256,14 @@ app.get("/daily", async (req, res) => {
               const val = parseInt(m[1], 10);
               const unit = m[2].toLowerCase();
               if (Number.isNaN(val)) continue;
-              if (unit === "mo") seconds += val * 30 * 86400;
-              else if (unit === "w") seconds += val * 7 * 86400;
-              else if (unit === "d") seconds += val * 86400;
-              else if (unit === "h") seconds += val * 3600;
+              const H = 3600;
+              const D = 8 * H; // GitLab: 1d = 8h
+              const W = 5 * D; // GitLab: 1w = 5d
+              const MO = 4 * W; // GitLab: 1mo = 4w
+              if (unit === "mo") seconds += val * MO;
+              else if (unit === "w") seconds += val * W;
+              else if (unit === "d") seconds += val * D;
+              else if (unit === "h") seconds += val * H;
               else if (unit === "m") seconds += val * 60;
               else if (unit === "s") seconds += val;
             }
@@ -1282,6 +1292,7 @@ app.get("/daily", async (req, res) => {
                 labels: issue.labels,
                 time_stats: issue.time_stats,
                 milestone: issue.milestone,
+                created_at: issue.created_at,
                 updated_at: issue.updated_at,
                 dailySpent: 0,
                 commentsToday: 0,
@@ -1401,6 +1412,7 @@ app.get("/daily", async (req, res) => {
             labels: issue.labels,
             time_stats: issue.time_stats,
             milestone: issue.milestone,
+            created_at: issue.created_at,
             updated_at: issue.updated_at,
             dailySpent: usersMap[uid].issues[issue.iid]?.dailySpent || 0,
             commentsToday: usersMap[uid].issues[issue.iid]?.commentsToday || 0,
