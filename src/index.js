@@ -1027,6 +1027,182 @@ app.post("/register", async (req, res) => {
   }
 });
 
+app.get("/daily", async (req, res) => {
+  try {
+    const baseUUrl = process.env.GITLAB_BASE_URL;
+    const projectId = req.query.projectId || process.env.GITLAB_PROJECT_ID;
+    const { date, labels, state } = req.query;
+    const targetDate = date || new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    let labelList = [];
+    if (labels) {
+      labelList = Array.isArray(labels)
+        ? labels
+        : labels.split(",").map((l) => l.trim()).filter(Boolean);
+    }
+    // فقط یک پروژه (taskboard)
+    let allIssues = [];
+    let page = 1;
+    const perPage = 100;
+    while (true) {
+      const params = new URLSearchParams();
+      params.set("per_page", String(perPage));
+      params.set("page", String(page));
+      params.set("state", state || "all");
+      const url = `${baseUUrl}/projects/${projectId}/issues?${params.toString()}`;
+      const resp = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+        },
+      });
+      if (!resp.ok) break;
+      const batch = await resp.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      allIssues.push(...batch);
+      if (batch.length < perPage) break;
+      page++;
+    }
+    console.log('Fetched issues:', allIssues.length)
+    // اگر labels داده شده فقط ایشوهایی که همه لیبل‌ها را دارند
+    if (labelList.length > 0) {
+      allIssues = allIssues.filter(
+        (issue) =>
+          Array.isArray(issue.labels) &&
+          labelList.every((lbl) => issue.labels.includes(lbl))
+      );
+    }
+
+    const usersMap = {};
+    const limit = 5; // تعداد همزمان fetch
+    function chunkArray(arr, size) {
+      const out = [];
+      for (let i = 0; i < arr.length; i += size) {
+        out.push(arr.slice(i, i + size));
+      }
+      return out;
+    }
+    const issueChunks = chunkArray(allIssues, limit);
+    for (const chunk of issueChunks) {
+      await Promise.all(chunk.map(async (issue) => {
+        if (!issue.iid) return;
+        const notesResp = await fetch(
+          `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+            },
+          },
+        );
+        if (!notesResp.ok) return;
+        const notes = await notesResp.json();
+        for (const note of notes) {
+          if (!note?.body || !note?.created_at || !note?.author?.id) continue;
+          const noteDate = new Date(note.created_at).toISOString().slice(0, 10);
+          if (noteDate !== targetDate) continue;
+          // استخراج ثانیه از note
+          const body = note.body.toLowerCase();
+          const isAdd = body.includes("added") && body.includes("time spent");
+          const isSub = body.includes("subtracted") && body.includes("time spent");
+          if (!isAdd && !isSub) continue;
+          const hourMatch = body.match(/(\d+)\s*h/);
+          const minMatch = body.match(/(\d+)\s*m/);
+          const secMatch = body.match(/(\d+)\s*s/);
+          let seconds = 0;
+          if (hourMatch) seconds += parseInt(hourMatch[1], 10) * 3600;
+          if (minMatch) seconds += parseInt(minMatch[1], 10) * 60;
+          if (secMatch) seconds += parseInt(secMatch[1], 10);
+          if (seconds === 0) continue;
+          const uid = note.author.id;
+          // اطلاعات کاربر و ایشو را فقط اگر امروز note دارد ثبت کن
+          if (!usersMap[uid]) {
+            usersMap[uid] = {
+              userId: uid,
+              username: note.author.username || "",
+              name: note.author.name || "",
+              avatar_url: note.author.avatar_url || "",
+              dailySpent: 0,
+              issues: {}, // issueId -> info
+              labels: new Set(),
+            };
+          }
+          usersMap[uid].dailySpent += isSub ? -seconds : seconds;
+          // اطلاعات ایشو را به کاربر اضافه کن
+          if (!usersMap[uid].issues[issue.iid]) {
+            usersMap[uid].issues[issue.iid] = {
+              iid: issue.iid,
+              title: issue.title,
+              labels: issue.labels,
+              time_stats: issue.time_stats,
+              milestone: issue.milestone,
+              updated_at: issue.updated_at,
+            };
+            if (Array.isArray(issue.labels)) {
+              issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+            }
+          }
+        }
+      }));
+    }
+    // ۲. ایشوهایی که updated_at امروز دارند (حتی اگر note نداشته باشند)
+    for (const issue of allIssues) {
+      const updatedDate = issue.updated_at ? new Date(issue.updated_at).toISOString().slice(0, 10) : null;
+      if (updatedDate !== targetDate) continue;
+      const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+      const legacy = issue.assignee ? [issue.assignee] : [];
+      const recipients = assignees.length > 0 ? assignees : legacy;
+      for (const person of recipients) {
+        if (!person || !person.id) continue;
+        const uid = person.id;
+        if (!usersMap[uid]) {
+          usersMap[uid] = {
+            userId: uid,
+            username: person.username,
+            name: person.name,
+            avatar_url: person.avatar_url,
+            dailySpent: 0,
+            issues: {},
+            labels: new Set(),
+          };
+        }
+        // اطلاعات ایشو را به کاربر اضافه کن (اگر قبلاً اضافه نشده)
+        if (!usersMap[uid].issues[issue.iid]) {
+          usersMap[uid].issues[issue.iid] = {
+            iid: issue.iid,
+            title: issue.title,
+            labels: issue.labels,
+            time_stats: issue.time_stats,
+            milestone: issue.milestone,
+            updated_at: issue.updated_at,
+          };
+          if (Array.isArray(issue.labels)) {
+            issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+          }
+        }
+      }
+    }
+    console.log('Notes and updated issues processed')
+    // خروجی نهایی: فقط کاربرانی که امروز note دارند یا ایشویشان آپدیت شده
+    const results = Object.values(usersMap).map((u) => ({
+      userId: u.userId,
+      username: u.username,
+      name: u.name,
+      avatar_url: u.avatar_url,
+      dailySpent: u.dailySpent || 0,
+      issues: Object.values(u.issues),
+      labels: Array.from(u.labels),
+    }));
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({
+      message: "خطا در تولید گزارش روزانه فعالیت کاربران",
+      error: error?.message || String(error),
+    });
+  }
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
