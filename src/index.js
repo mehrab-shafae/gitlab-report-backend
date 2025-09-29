@@ -1721,6 +1721,7 @@ app.get("/activity-range", async (req, res) => {
                     totalSpent: 0,
                     issues: {},
                     labels: new Set(),
+                    byDate: {},
                   };
                 }
                 // Deletions subtract time
@@ -1736,12 +1737,29 @@ app.get("/activity-range", async (req, res) => {
                     updated_at: issue.updated_at,
                     spentInRange: 0,
                     commentsInRange: 0,
+                    quality: {
+                      hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                      hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                      labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                      hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some((l) => /status/i.test(String(l))) : false,
+                      estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                      spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                      spentEqualsEstimate: Boolean(
+                        issue.time_stats &&
+                        Number(issue.time_stats.time_estimate) > 0 &&
+                        Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)
+                      ),
+                      descriptionEditsInRange: 0,
+                      largeOneOffSpends: [],
+                    },
                   };
                   if (Array.isArray(issue.labels)) {
                     issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
                   }
                 }
                 usersMap[authorId].issues[issue.iid].spentInRange -= seconds;
+                // attribute to referenced date
+                usersMap[authorId].byDate[fromDateKey] = (usersMap[authorId].byDate[fromDateKey] || 0) - seconds;
                 continue;
               }
 
@@ -1779,6 +1797,7 @@ app.get("/activity-range", async (req, res) => {
                   totalSpent: 0,
                   issues: {},
                   labels: new Set(),
+                  byDate: {},
                 };
               }
               usersMap[authorId].totalSpent += isSub ? -seconds : seconds;
@@ -1793,12 +1812,36 @@ app.get("/activity-range", async (req, res) => {
                   updated_at: issue.updated_at,
                   spentInRange: 0,
                   commentsInRange: 0,
+                  quality: {
+                    hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                    hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                    labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                    hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some((l) => /status/i.test(String(l))) : false,
+                    estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                    spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                    spentEqualsEstimate: Boolean(
+                      issue.time_stats &&
+                      Number(issue.time_stats.time_estimate) > 0 &&
+                      Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)
+                    ),
+                    descriptionEditsInRange: 0,
+                    largeOneOffSpends: [],
+                  },
                 };
                 if (Array.isArray(issue.labels)) {
                   issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
                 }
               }
               usersMap[authorId].issues[issue.iid].spentInRange += isSub ? -seconds : seconds;
+              // attribute to note date
+              usersMap[authorId].byDate[noteKey] = (usersMap[authorId].byDate[noteKey] || 0) + (isSub ? -seconds : seconds);
+              // Detect "large one-off" spends (>= 1d)
+              if (isAdd && seconds >= 8 * 3600) {
+                usersMap[authorId].issues[issue.iid].quality.largeOneOffSpends.push({
+                  at: note.created_at,
+                  seconds,
+                });
+              }
             }
           }
 
@@ -1826,6 +1869,7 @@ app.get("/activity-range", async (req, res) => {
                   totalSpent: 0,
                   issues: {},
                   labels: new Set(),
+                  byDate: {},
                 };
               }
               if (!usersMap[authorId].issues[issue.iid]) {
@@ -1839,12 +1883,39 @@ app.get("/activity-range", async (req, res) => {
                   updated_at: issue.updated_at,
                   spentInRange: 0,
                   commentsInRange: 0,
+                  quality: {
+                    hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                    hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                    labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                    hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some((l) => /status/i.test(String(l))) : false,
+                    estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                    spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                    spentEqualsEstimate: Boolean(
+                      issue.time_stats &&
+                      Number(issue.time_stats.time_estimate) > 0 &&
+                      Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)
+                    ),
+                    descriptionEditsInRange: 0,
+                    largeOneOffSpends: [],
+                  },
                 };
                 if (Array.isArray(issue.labels)) {
                   issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
                 }
               }
               usersMap[authorId].issues[issue.iid].commentsInRange += 1;
+              // Heuristic: count description edits within range
+              const lastEditedAt = note.last_edited_at || note.updated_at;
+              const editor = note.last_edited_by || note.editor || note.author;
+              if (lastEditedAt) {
+                const editKey = new Date(lastEditedAt).toISOString().slice(0, 10);
+                if (isInRange(editKey) && editor && Number(editor.id) === authorId && note.created_at !== lastEditedAt) {
+                  const bodyStr = typeof note.body === "string" ? note.body.toLowerCase() : "";
+                  if (bodyStr.includes("description") || bodyStr.includes("edited") || bodyStr.includes("changed")) {
+                    usersMap[authorId].issues[issue.iid].quality.descriptionEditsInRange += 1;
+                  }
+                }
+              }
             }
           }
         }),
@@ -1935,12 +2006,105 @@ app.get("/activity-range", async (req, res) => {
       }
     }
 
+    // Compute per-issue suspicious reasons and per-user realness with stricter daily-hour rules
+    for (const u of Object.values(usersMap)) {
+      let totalIssueCount = 0;
+      let realnessSum = 0; // sum of per-issue scores in [0,1]
+      let suspiciousIssueCount = 0; // for reference only
+      // Daily hours aggregation from byDate (seconds)
+      const dailyKeys = Object.keys(u.byDate || {}).sort();
+      const daily = dailyKeys.map((k) => ({ date: k, spent: u.byDate[k] || 0 }));
+      const H = 3600;
+      const targetDailyMax = 7.5 * H; // 7h30m
+      const minHealthy = 5 * H; // 5h
+      let daysBelowMin = 0;
+      let daysAboveTarget = 0;
+      for (const d of daily) {
+        if (d.spent < minHealthy) daysBelowMin += 1;
+        if (d.spent > targetDailyMax) daysAboveTarget += 1;
+      }
+      for (const iss of Object.values(u.issues)) {
+        const q = iss.quality || {};
+        const reasons = [];
+        if (q.hasTitle === false) reasons.push("missing_title");
+        if (q.hasDescription === false) reasons.push("missing_description");
+        if (q.spentEqualsEstimate === true) reasons.push("spent_equals_estimate");
+        if (q.spentIsZero === true) reasons.push("no_spent");
+        if (q.estimateIsZero === true) reasons.push("no_estimate");
+        if ((q.labelsCount || 0) <= 3) reasons.push("few_labels");
+        if (q.hasStatusLabel === false) reasons.push("missing_status_label");
+        if ((q.descriptionEditsInRange || 0) >= 3) reasons.push("many_description_edits");
+        const hasBigOneOff = Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0;
+        if (hasBigOneOff) reasons.push("large_one_off_spend");
+
+        // Enrich quality with derived values
+        const estimate = Number(iss?.time_stats?.time_estimate) || 0;
+        const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
+        const spentInRange = Number(iss?.spentInRange) || 0;
+        q.spentToEstimateRatio = estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
+        q.hasBigOneOffSpend = hasBigOneOff;
+        iss.quality = q;
+
+        // Stricter per-issue realness scoring influenced by daily behavior
+        let score = 1.0;
+        const subtract = (v) => (score = Math.max(0, score - v));
+        const add = (v) => (score = Math.min(1, score + v));
+        // penalties (mild to moderate)
+        if (q.hasTitle === false) subtract(0.12);
+        if (q.hasDescription === false) subtract(0.12);
+        if (q.spentEqualsEstimate === true) subtract(0.18);
+        if (q.spentIsZero === true) subtract(0.12);
+        if (q.estimateIsZero === true) subtract(0.12);
+        if ((q.labelsCount || 0) <= 3) subtract(0.06);
+        if (q.hasStatusLabel === false) subtract(0.06);
+        if ((q.descriptionEditsInRange || 0) >= 3) subtract(0.12);
+        if (hasBigOneOff) subtract(0.18);
+        // daily behavior influence (applied gently but consistently to each issue)
+        if (daysBelowMin > 0) subtract(Math.min(0.2, 0.02 * daysBelowMin));
+        if (daysAboveTarget > 0) add(Math.min(0.15, 0.015 * daysAboveTarget));
+        // bonuses for activity
+        if (spentInRange > 0) add(0.08);
+        if ((iss?.commentsInRange || 0) > 0) add(Math.min(0.08, 0.02 * iss.commentsInRange));
+        if (estimate > 0 && totalSpent > 0) {
+          const ratio = totalSpent / estimate;
+          if (ratio >= 0.6 && ratio <= 1.4) add(0.05);
+        }
+
+        iss.realnessScore = Number(score.toFixed(2));
+        iss.suspiciousReasons = reasons;
+        totalIssueCount += 1;
+        realnessSum += score;
+        if (reasons.length > 0) suspiciousIssueCount += 1;
+      }
+      u.totalIssueCount = totalIssueCount;
+      u.suspiciousIssueCount = suspiciousIssueCount;
+      u.realnessPercent = totalIssueCount > 0 ? Number((realnessSum / totalIssueCount) * 100).toFixed(2) : 100;
+      // Add human-readable daily metrics and overtime flag
+      const toHM = (s) => {
+        const sec = Math.round(Number(s) || 0);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        return `${h}h ${m}m`;
+      };
+      u.dailySummary = daily.map((d) => ({ date: d.date, spent: d.spent, spent_hm: toHM(d.spent) }));
+      u.daysBelowMin = daysBelowMin;
+      u.daysAboveTarget = daysAboveTarget;
+      u.overtime = daysAboveTarget > 0;
+    }
+
     const results = Object.values(usersMap).map((u) => ({
       userId: u.userId,
       username: u.username,
       name: u.name,
       avatar_url: u.avatar_url,
       totalSpent: u.totalSpent || 0,
+      realnessPercent: u.realnessPercent,
+      suspiciousIssueCount: u.suspiciousIssueCount,
+      totalIssueCount: u.totalIssueCount,
+      overtime: u.overtime,
+      daysBelowMin: u.daysBelowMin,
+      daysAboveTarget: u.daysAboveTarget,
+      dailySummary: u.dailySummary,
       issues: Object.values(u.issues),
       labels: Array.from(u.labels),
     }));
