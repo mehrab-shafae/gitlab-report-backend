@@ -15,7 +15,7 @@ mongoose
             minPoolSize: 5,
             maxPoolSize: 20,
       })
-      .then(() => console.log('MongoDB connected'))
+      .then(() => console.log('* MongoDB connected'))
       .catch(err => console.error('MongoDB connection error:', err.message));
 
 const userSchema = new mongoose.Schema(
@@ -1231,9 +1231,6 @@ function master1() {
             try {
                   const { users, from, to } = req.query;
 
-                  if (!projectId) {
-                        return res.status(400).json({ message: 'GITLAB_PROJECT_ID مشخص نشده است' });
-                  }
                   if (!users || !from || !to) {
                         return res.status(400).json({ message: 'پارامترهای users, from, to الزامی هستند' });
                   }
@@ -1691,14 +1688,63 @@ function master1() {
                               spent: u.byDate[k] || 0,
                         }));
                         const H = 3600;
-                        const targetDailyMax = 7.5 * H;
-                        const minHealthy = 5 * H;
+                        const targetMin = 7 * H;
+                        const targetMax = 8 * H;
+                        const overworkSoft = 9 * H;
+                        const fakeSpendThreshold = 5 * H;
                         let daysBelowMin = 0;
-                        let daysAboveTarget = 0;
+                        let daysAboveMax = 0;
+                        let daysFake = 0;
+                        let healthyDays = 0;
+                        let totalDays = daily.length;
+                        let totalSpent = 0;
+                        let fakeDaysDetails = [];
+
+                        // بررسی spend هر روز
                         for (const d of daily) {
-                              if (d.spent < minHealthy) daysBelowMin += 1;
-                              if (d.spent > targetDailyMax) daysAboveTarget += 1;
+                              totalSpent += d.spent;
+                              if (d.spent < targetMin) {
+                                    daysBelowMin += 1;
+                              } else if (d.spent >= targetMin && d.spent <= targetMax) {
+                                    healthyDays += 1;
+                              } else if (d.spent > targetMax && d.spent <= overworkSoft) {
+                                    daysAboveMax += 1;
+                              } else if (d.spent > overworkSoft) {
+                                    daysFake += 1;
+                                    fakeDaysDetails.push({date: d.date, spent: d.spent});
+                              }
                         }
+
+                        // بررسی spendهای یکجا (largeOneOffSpends)
+                        let largeOneOffSpendsCount = 0;
+                        for (const iss of Object.values(u.issues)) {
+                              const q = iss.quality || {};
+                              if (Array.isArray(q.largeOneOffSpends)) {
+                                    for (const s of q.largeOneOffSpends) {
+                                          if (s.seconds >= fakeSpendThreshold) {
+                                                largeOneOffSpendsCount++;
+                                                fakeDaysDetails.push({date: s.at, spent: s.seconds, type: 'largeOneOff'});
+                                          }
+                                    }
+                              }
+                        }
+
+                        // امتیازدهی realness
+                        let realnessScore = 1.0;
+                        // کم‌کاری
+                        if (daysBelowMin > 0) realnessScore -= Math.min(0.2, 0.03 * daysBelowMin);
+                        // healthy
+                        if (healthyDays > 0) realnessScore += Math.min(0.15, 0.01 * healthyDays);
+                        // بیش‌کاری سالم
+                        if (daysAboveMax > 0) realnessScore += Math.min(0.08, 0.008 * daysAboveMax);
+                        // fake spend (بیش از ۹ ساعت)
+                        if (daysFake > 0) realnessScore -= Math.min(0.5, 0.12 * daysFake);
+                        // large one-off spends
+                        if (largeOneOffSpendsCount > 0) realnessScore -= Math.min(0.4, 0.1 * largeOneOffSpendsCount);
+                        // محدودیت امتیاز
+                        realnessScore = Math.max(0, Math.min(1, realnessScore));
+
+                        // quality و امتیاز ایشوها (در گام بعدی کامل‌تر می‌شود)
                         for (const iss of Object.values(u.issues)) {
                               const q = iss.quality || {};
                               const reasons = [];
@@ -1712,62 +1758,109 @@ function master1() {
                               if ((q.descriptionEditsInRange || 0) >= 3) reasons.push('many_description_edits');
                               const hasBigOneOff = Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0;
                               if (hasBigOneOff) reasons.push('large_one_off_spend');
-
-                              const estimate = Number(iss?.time_stats?.time_estimate) || 0;
-                              const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
-                              const spentInRange = Number(iss?.spentInRange) || 0;
-                              q.spentToEstimateRatio = estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
-                              q.hasBigOneOffSpend = hasBigOneOff;
-                              iss.quality = q;
-
-                              let score = 1.0;
-                              const subtract = v => (score = Math.max(0, score - v));
-                              const add = v => (score = Math.min(1, score + v));
-
-                              if (q.hasTitle === false) subtract(0.12);
-                              if (q.hasDescription === false) subtract(0.12);
-                              if (q.spentEqualsEstimate === true) subtract(0.18);
-                              if (q.spentIsZero === true) subtract(0.12);
-                              if (q.estimateIsZero === true) subtract(0.12);
-                              if ((q.labelsCount || 0) <= 3) subtract(0.06);
-                              if (q.hasStatusLabel === false) subtract(0.06);
-                              if ((q.descriptionEditsInRange || 0) >= 3) subtract(0.12);
-                              if (hasBigOneOff) subtract(0.18);
-
-                              if (daysBelowMin > 0) subtract(Math.min(0.2, 0.02 * daysBelowMin));
-                              if (daysAboveTarget > 0) add(Math.min(0.15, 0.015 * daysAboveTarget));
-
-                              if (spentInRange > 0) add(0.08);
-                              if ((iss?.commentsInRange || 0) > 0) add(Math.min(0.08, 0.02 * iss.commentsInRange));
-                              if (estimate > 0 && totalSpent > 0) {
-                                    const ratio = totalSpent / estimate;
-                                    if (ratio >= 0.6 && ratio <= 1.4) add(0.05);
-                              }
-
-                              iss.realnessScore = Number(score.toFixed(2));
                               iss.suspiciousReasons = reasons;
                               totalIssueCount += 1;
-                              realnessSum += score;
                               if (reasons.length > 0) suspiciousIssueCount += 1;
                         }
+
                         u.totalIssueCount = totalIssueCount;
                         u.suspiciousIssueCount = suspiciousIssueCount;
-                        u.realnessPercent = totalIssueCount > 0 ? Number((realnessSum / totalIssueCount) * 100).toFixed(2) : 100;
-
-                        const toHM = s => {
-                              const sec = Math.round(Number(s) || 0);
-                              const h = Math.floor(sec / 3600);
-                              const m = Math.floor((sec % 3600) / 60);
-                              return `${h}h ${m}m`;
-                        };
+                        u.realnessPercent = Number((realnessScore * 100).toFixed(2));
+                        u.daysBelowMin = daysBelowMin;
+                        u.daysAboveMax = daysAboveMax;
+                        u.daysFake = daysFake;
+                        u.healthyDays = healthyDays;
+                        u.totalDays = totalDays;
+                        u.fakeDaysDetails = fakeDaysDetails;
+                        u.largeOneOffSpendsCount = largeOneOffSpendsCount;
+                        u.totalSpent = totalSpent;
                         u.dailySummary = daily.map(d => ({
                               date: d.date,
                               spent: d.spent,
-                              spent_hm: toHM(d.spent),
+                              spent_hm: `${Math.floor(d.spent / 3600)}h ${Math.floor((d.spent % 3600) / 60)}m`,
                         }));
-                        u.daysBelowMin = daysBelowMin;
-                        u.daysAboveTarget = daysAboveTarget;
-                        u.overtime = daysAboveTarget > 0;
+                        // --- شاخص‌های جدید quality برای هر ایشو ---
+                        for (const iss of Object.values(u.issues)) {
+                            const q = iss.quality || {};
+                            // توزیع spend در روزهای مختلف
+                            const spentDistribution = {};
+                            if (iss.spentInRange && u.byDate) {
+                                for (const [date, spent] of Object.entries(u.byDate)) {
+                                    if (spent > 0) spentDistribution[date] = spent;
+                                }
+                            }
+                            q.spentDistributionDays = Object.keys(spentDistribution).length;
+                            // تعداد ویرایش توضیح
+                            q.descriptionEdits = q.descriptionEditsInRange || 0;
+                            // نسبت spent به estimate
+                            const estimate = Number(iss?.time_stats?.time_estimate) || 0;
+                            const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
+                            q.spentToEstimateRatio = estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
+                            // تعداد کامنت مفید
+                            q.commentsInRange = iss.commentsInRange || 0;
+                            // شاخص کیفیت کلی ایشو (qualityScore)
+                            let qualityScore = 1.0;
+                            if (q.hasTitle === false) qualityScore -= 0.12;
+                            if (q.hasDescription === false) qualityScore -= 0.12;
+                            if (q.spentEqualsEstimate === true) qualityScore -= 0.18;
+                            if (q.spentIsZero === true) qualityScore -= 0.12;
+                            if (q.estimateIsZero === true) qualityScore -= 0.12;
+                            if ((q.labelsCount || 0) <= 3) qualityScore -= 0.06;
+                            if (q.hasStatusLabel === false) qualityScore -= 0.06;
+                            if ((q.descriptionEditsInRange || 0) >= 3) qualityScore -= 0.12;
+                            if (Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0) qualityScore -= 0.18;
+                            // spent توزیع نشده (همه در یک روز)
+                            if (q.spentDistributionDays <= 1 && iss.spentInRange > 2 * 3600) qualityScore -= 0.15;
+                            // نسبت spent به estimate خیلی کم یا زیاد
+                            if (q.spentToEstimateRatio && (q.spentToEstimateRatio < 0.5 || q.spentToEstimateRatio > 1.5)) qualityScore -= 0.12;
+                            // تعداد کامنت مفید کم
+                            if (q.commentsInRange < 1) qualityScore -= 0.05;
+                            // محدودیت امتیاز
+                            qualityScore = Math.max(0, Math.min(1, qualityScore));
+                            q.qualityScore = Number(qualityScore.toFixed(2));
+                            iss.quality = q;
+                        }
+
+                        // --- summary برای هر یوزر ---
+                        u.summary = {
+                            totalDays: u.totalDays,
+                            healthyDays: u.healthyDays,
+                            daysBelowMin: u.daysBelowMin,
+                            daysAboveMax: u.daysAboveMax,
+                            daysFake: u.daysFake,
+                            largeOneOffSpendsCount: u.largeOneOffSpendsCount,
+                            totalSpent: u.totalSpent,
+                            avgDailySpent: u.totalDays > 0 ? Math.round(u.totalSpent / u.totalDays) : 0,
+                            realnessPercent: u.realnessPercent,
+                            suspiciousIssueCount: u.suspiciousIssueCount,
+                            totalIssueCount: u.totalIssueCount,
+                            fakeDaysDetails: u.fakeDaysDetails,
+                            qualityDistribution: {
+                                good: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.8).length,
+                                medium: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.5 && iss.quality?.qualityScore < 0.8).length,
+                                weak: Object.values(u.issues).filter(iss => iss.quality?.qualityScore < 0.5).length,
+                            },
+                        };
+                        // --- trend و پیام راهنما برای هر یوزر ---
+                        let guidance = [];
+                        // spend غیرعادی
+                        if (u.daysFake > 0) guidance.push('در برخی روزها spend غیرواقعی ثبت شده است. لطفاً spend خود را به صورت واقعی و منظم وارد کنید.');
+                        if (u.daysBelowMin > 0) guidance.push('در برخی روزها کمتر از حداقل ساعات کاری spend ثبت شده است.');
+                        if (u.largeOneOffSpendsCount > 0) guidance.push('چند spend بزرگ یکجا ثبت شده که مشکوک به فیک بودن است.');
+                        // کیفیت ایشوها
+                        if (u.summary.qualityDistribution.weak > 0) guidance.push('برخی ایشوها کیفیت پایینی دارند. لطفاً عنوان، توضیح و برآورد زمانی را کامل‌تر وارد کنید.');
+                        if (u.summary.qualityDistribution.good === 0) guidance.push('هیچ ایشوی با کیفیت عالی ثبت نشده است.');
+                        // trend عملکرد (ساده: مقایسه نیمه اول و دوم بازه)
+                        let trend = 'stable';
+                        if (u.dailySummary && u.dailySummary.length > 4) {
+                            const mid = Math.floor(u.dailySummary.length / 2);
+                            const firstHalf = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0) / (mid || 1);
+                            const secondHalf = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0) / (u.dailySummary.length - mid || 1);
+                            if (secondHalf > firstHalf * 1.1) trend = 'improving';
+                            else if (secondHalf < firstHalf * 0.9) trend = 'declining';
+                        }
+                        u.summary.guidance = guidance;
+                        u.summary.trend = trend;
                   }
 
                   const results = Object.values(usersMap).map(u => ({
@@ -1775,15 +1868,21 @@ function master1() {
                         username: u.username,
                         name: u.name,
                         avatar_url: u.avatar_url,
-                        totalSpent: u.totalSpent || 0,
-                        realnessPercent: u.realnessPercent,
-                        suspiciousIssueCount: u.suspiciousIssueCount,
-                        totalIssueCount: u.totalIssueCount,
-                        overtime: u.overtime,
-                        daysBelowMin: u.daysBelowMin,
-                        daysAboveTarget: u.daysAboveTarget,
+                        summary: u.summary,
                         dailySummary: u.dailySummary,
-                        issues: Object.values(u.issues),
+                        issues: Object.values(u.issues).map(iss => ({
+                            iid: iss.iid,
+                            title: iss.title,
+                            labels: iss.labels,
+                            time_stats: iss.time_stats,
+                            milestone: iss.milestone,
+                            created_at: iss.created_at,
+                            updated_at: iss.updated_at,
+                            spentInRange: iss.spentInRange,
+                            commentsInRange: iss.commentsInRange,
+                            quality: iss.quality,
+                            suspiciousReasons: iss.suspiciousReasons,
+                        })),
                         labels: Array.from(u.labels),
                   }));
 
