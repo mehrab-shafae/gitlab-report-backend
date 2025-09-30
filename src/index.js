@@ -1231,8 +1231,8 @@ function master1() {
             // --- تعریف وزن‌های امتیازدهی ---
             const weights = {
                   realness: 0.5, // واقعیت فعالیت
-                  quality: 0.3,  // کیفیت ایشوها
-                  absence: 0.2   // غیبت
+                  quality: 0.3, // کیفیت ایشوها
+                  absence: 0.2, // غیبت
             };
             try {
                   const { users, from, to } = req.query;
@@ -1501,7 +1501,7 @@ function master1() {
                                                       usersMap[authorId].issues[issue.iid] = {
                                                             iid: issue.iid,
                                                             title: issue.title,
-                                                                  state: issue.state,
+                                                            state: issue.state,
                                                             labels: issue.labels,
                                                             time_stats: issue.time_stats,
                                                             milestone: issue.milestone,
@@ -1733,7 +1733,7 @@ function master1() {
                                     daysAboveMax += 1;
                               } else if (d.spent > overworkSoft) {
                                     daysFake += 1;
-                                    fakeDaysDetails.push({date: d.date, spent: d.spent});
+                                    fakeDaysDetails.push({ date: d.date, spent: d.spent });
                               }
                         }
 
@@ -1745,7 +1745,7 @@ function master1() {
                                     for (const s of q.largeOneOffSpends) {
                                           if (s.seconds >= fakeSpendThreshold) {
                                                 largeOneOffSpendsCount++;
-                                                fakeDaysDetails.push({date: s.at, spent: s.seconds, type: 'largeOneOff'});
+                                                fakeDaysDetails.push({ date: s.at, spent: s.seconds, type: 'largeOneOff' });
                                           }
                                     }
                               }
@@ -1825,97 +1825,136 @@ function master1() {
                         }));
                         // --- شاخص‌های جدید quality برای هر ایشو ---
                         for (const iss of Object.values(u.issues)) {
-                            const q = iss.quality || {};
-                            // توزیع spend در روزهای مختلف
-                            const spentDistribution = {};
-                            if (iss.spentInRange && u.byDate) {
-                                for (const [date, spent] of Object.entries(u.byDate)) {
-                                    if (spent > 0) spentDistribution[date] = spent;
-                                }
-                            }
-                            q.spentDistributionDays = Object.keys(spentDistribution).length;
-                            // تعداد ویرایش توضیح
-                            q.descriptionEdits = q.descriptionEditsInRange || 0;
-                            // نسبت spent به estimate
-                            const estimate = Number(iss?.time_stats?.time_estimate) || 0;
-                            const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
-                            q.spentToEstimateRatio = estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
-                            // تعداد کامنت مفید
-                            q.commentsInRange = iss.commentsInRange || 0;
-                            // --- شاخص کیفیت کلی ایشو (qualityScore)
-                            let qualityScore = 1.0;
-                            const qualityPenalties = [];
-                            if (q.hasTitle === false) { qualityScore -= 0.18; qualityPenalties.push('missing_title'); }
-                            if (q.hasDescription === false) { qualityScore -= 0.18; qualityPenalties.push('missing_description'); }
-                            if (q.spentEqualsEstimate === true) { qualityScore -= 0.22; qualityPenalties.push('spent_equals_estimate'); }
-                            if (q.spentIsZero === true) { qualityScore -= 0.18; qualityPenalties.push('no_spent'); }
-                            if (q.estimateIsZero === true) { qualityScore -= 0.18; qualityPenalties.push('no_estimate'); }
-                            if ((q.labelsCount || 0) <= 3) { qualityScore -= 0.12; qualityPenalties.push('few_labels'); }
-                            if ((q.labelsCount || 0) <= 1) { qualityScore -= 0.10; qualityPenalties.push('very_few_labels'); }
-                            if (q.hasStatusLabel === false) { qualityScore -= 0.12; qualityPenalties.push('missing_status_label'); }
-                            if ((q.descriptionEditsInRange || 0) >= 3) { qualityScore -= 0.15; qualityPenalties.push('many_description_edits'); }
-                            if (Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0) { qualityScore -= 0.22; qualityPenalties.push('large_one_off_spend'); }
-                            // spent توزیع نشده (همه در یک روز)
-                            if (q.spentDistributionDays <= 1 && iss.spentInRange > 2 * 3600) { qualityScore -= 0.18; qualityPenalties.push('undistributed_spend'); }
-                            // نسبت spent به estimate خیلی کم یا زیاد
-                            if (q.spentToEstimateRatio && (q.spentToEstimateRatio < 0.5 || q.spentToEstimateRatio > 1.5)) { qualityScore -= 0.15; qualityPenalties.push('bad_spent_to_estimate_ratio'); }
-                            // تعداد کامنت مفید کم
-                            if (q.commentsInRange < 1) { qualityScore -= 0.08; qualityPenalties.push('few_comments'); }
-                            // اگر بیش از ۳ مورد مشکل quality وجود داشته باشد، جریمه اضافی
-                            if (qualityPenalties.length >= 3) qualityScore -= 0.15;
-                            // محدودیت امتیاز
-                            qualityScore = Math.max(0, Math.min(1, qualityScore));
-                            q.qualityScore = Number(qualityScore.toFixed(2));
-                            q.qualityPenalties = qualityPenalties;
-                            // پاداش همراستایی spent و estimate: هرچه نسبت نزدیک‌تر به ۱، امتیاز بهتر
-                            // از نسبت spentToEstimateRatio استفاده می‌کنیم که در بالا محاسبه شد
-                            let estimateAlignment = 0;
-                            if (q.spentToEstimateRatio !== null && q.spentToEstimateRatio !== undefined) {
-                                const ratioNum = Number(q.spentToEstimateRatio);
-                                if (!Number.isNaN(ratioNum)) {
-                                    const diff = Math.abs(1 - ratioNum);
-                                    // نگاشت دیف به بازه [0,1] (هرچه کمتر بهتر)
-                                    const alignment = Math.max(0, 1 - Math.min(1, diff));
-                                    estimateAlignment = Number(alignment.toFixed(2));
-                                }
-                            }
-                            q.estimateAlignment = estimateAlignment; // برای گزارش‌گیری
-                            iss.quality = q;
+                              const q = iss.quality || {};
+                              // توزیع spend در روزهای مختلف
+                              const spentDistribution = {};
+                              if (iss.spentInRange && u.byDate) {
+                                    for (const [date, spent] of Object.entries(u.byDate)) {
+                                          if (spent > 0) spentDistribution[date] = spent;
+                                    }
+                              }
+                              q.spentDistributionDays = Object.keys(spentDistribution).length;
+                              // تعداد ویرایش توضیح
+                              q.descriptionEdits = q.descriptionEditsInRange || 0;
+                              // نسبت spent به estimate
+                              const estimate = Number(iss?.time_stats?.time_estimate) || 0;
+                              const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
+                              q.spentToEstimateRatio = estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
+                              // تعداد کامنت مفید
+                              q.commentsInRange = iss.commentsInRange || 0;
+                              // --- شاخص کیفیت کلی ایشو (qualityScore)
+                              let qualityScore = 1.0;
+                              const qualityPenalties = [];
+                              if (q.hasTitle === false) {
+                                    qualityScore -= 0.18;
+                                    qualityPenalties.push('missing_title');
+                              }
+                              if (q.hasDescription === false) {
+                                    qualityScore -= 0.18;
+                                    qualityPenalties.push('missing_description');
+                              }
+                              if (q.spentEqualsEstimate === true) {
+                                    qualityScore -= 0.22;
+                                    qualityPenalties.push('spent_equals_estimate');
+                              }
+                              if (q.spentIsZero === true) {
+                                    qualityScore -= 0.18;
+                                    qualityPenalties.push('no_spent');
+                              }
+                              if (q.estimateIsZero === true) {
+                                    qualityScore -= 0.18;
+                                    qualityPenalties.push('no_estimate');
+                              }
+                              if ((q.labelsCount || 0) <= 3) {
+                                    qualityScore -= 0.12;
+                                    qualityPenalties.push('few_labels');
+                              }
+                              if ((q.labelsCount || 0) <= 1) {
+                                    qualityScore -= 0.1;
+                                    qualityPenalties.push('very_few_labels');
+                              }
+                              if (q.hasStatusLabel === false) {
+                                    qualityScore -= 0.12;
+                                    qualityPenalties.push('missing_status_label');
+                              }
+                              if ((q.descriptionEditsInRange || 0) >= 3) {
+                                    qualityScore -= 0.15;
+                                    qualityPenalties.push('many_description_edits');
+                              }
+                              if (Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0) {
+                                    qualityScore -= 0.22;
+                                    qualityPenalties.push('large_one_off_spend');
+                              }
+                              // spent توزیع نشده (همه در یک روز)
+                              if (q.spentDistributionDays <= 1 && iss.spentInRange > 2 * 3600) {
+                                    qualityScore -= 0.18;
+                                    qualityPenalties.push('undistributed_spend');
+                              }
+                              // نسبت spent به estimate خیلی کم یا زیاد
+                              if (q.spentToEstimateRatio && (q.spentToEstimateRatio < 0.5 || q.spentToEstimateRatio > 1.5)) {
+                                    qualityScore -= 0.15;
+                                    qualityPenalties.push('bad_spent_to_estimate_ratio');
+                              }
+                              // تعداد کامنت مفید کم
+                              if (q.commentsInRange < 1) {
+                                    qualityScore -= 0.08;
+                                    qualityPenalties.push('few_comments');
+                              }
+                              // اگر بیش از ۳ مورد مشکل quality وجود داشته باشد، جریمه اضافی
+                              if (qualityPenalties.length >= 3) qualityScore -= 0.15;
+                              // محدودیت امتیاز
+                              qualityScore = Math.max(0, Math.min(1, qualityScore));
+                              q.qualityScore = Number(qualityScore.toFixed(2));
+                              q.qualityPenalties = qualityPenalties;
+                              // پاداش همراستایی spent و estimate: هرچه نسبت نزدیک‌تر به ۱، امتیاز بهتر
+                              // از نسبت spentToEstimateRatio استفاده می‌کنیم که در بالا محاسبه شد
+                              let estimateAlignment = 0;
+                              if (q.spentToEstimateRatio !== null && q.spentToEstimateRatio !== undefined) {
+                                    const ratioNum = Number(q.spentToEstimateRatio);
+                                    if (!Number.isNaN(ratioNum)) {
+                                          const diff = Math.abs(1 - ratioNum);
+                                          // نگاشت دیف به بازه [0,1] (هرچه کمتر بهتر)
+                                          const alignment = Math.max(0, 1 - Math.min(1, diff));
+                                          estimateAlignment = Number(alignment.toFixed(2));
+                                    }
+                              }
+                              q.estimateAlignment = estimateAlignment; // برای گزارش‌گیری
+                              iss.quality = q;
                         }
 
                         // --- summary برای هر یوزر ---
                         u.summary = {
-                            totalDays: u.totalDays,
-                            healthyDays: u.healthyDays,
-                            daysBelowMin: u.daysBelowMin,
-                            daysAboveMax: u.daysAboveMax,
-                            daysFake: u.daysFake,
-                            largeOneOffSpendsCount: u.largeOneOffSpendsCount,
-                            suspiciousIncrementCount: suspiciousIncrementCount,
-                            totalSpent: u.totalSpent,
-                            avgDailySpent: u.totalDays > 0 ? Math.round(u.totalSpent / u.totalDays) : 0,
-                            realnessPercent: u.realnessPercent,
-                            suspiciousIssueCount: u.suspiciousIssueCount,
-                            totalIssueCount: u.totalIssueCount,
-                            fakeDaysDetails: u.fakeDaysDetails,
-                            qualityDistribution: {
-                                good: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.8).length,
-                                medium: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.5 && iss.quality?.qualityScore < 0.8).length,
-                                weak: Object.values(u.issues).filter(iss => iss.quality?.qualityScore < 0.5).length,
-                            },
+                              totalDays: u.totalDays,
+                              healthyDays: u.healthyDays,
+                              daysBelowMin: u.daysBelowMin,
+                              daysAboveMax: u.daysAboveMax,
+                              daysFake: u.daysFake,
+                              largeOneOffSpendsCount: u.largeOneOffSpendsCount,
+                              suspiciousIncrementCount: suspiciousIncrementCount,
+                              totalSpent: u.totalSpent,
+                              avgDailySpent: u.totalDays > 0 ? Math.round(u.totalSpent / u.totalDays) : 0,
+                              realnessPercent: u.realnessPercent,
+                              suspiciousIssueCount: u.suspiciousIssueCount,
+                              totalIssueCount: u.totalIssueCount,
+                              fakeDaysDetails: u.fakeDaysDetails,
+                              qualityDistribution: {
+                                    good: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.8).length,
+                                    medium: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.5 && iss.quality?.qualityScore < 0.8).length,
+                                    weak: Object.values(u.issues).filter(iss => iss.quality?.qualityScore < 0.5).length,
+                              },
                         };
                         // --- trend و پیام راهنما برای هر یوزر ---
                         let guidance = [];
                         // پیام absence کلی
                         if (u.absenceCount > 0) {
-                            guidance.push(`در ${u.absenceCount} روز (${u.absenceDays.join(', ')}) هیچ فعالیتی ثبت نشده است.`);
+                              guidance.push(`در ${u.absenceCount} روز (${u.absenceDays.join(', ')}) هیچ فعالیتی ثبت نشده است.`);
                         }
                         // پیام fake spend کلی
                         if (u.daysFake > 0) {
-                            const fakeDates = u.fakeDaysDetails.filter(f => !f.type).map(f => f.date);
-                            if (fakeDates.length > 0) guidance.push(`در روزهای ${fakeDates.join(', ')} spend غیرواقعی (بیش از ۹ ساعت) ثبت شده است.`);
-                            const extremeFakeDates = u.dailySummary.filter(d => d.spent > 12 * 3600).map(d => d.date);
-                            if (extremeFakeDates.length > 0) guidance.push(`در روزهای ${extremeFakeDates.join(', ')} spend بسیار غیرواقعی (بیش از ۱۲ ساعت) ثبت شده است.`);
+                              const fakeDates = u.fakeDaysDetails.filter(f => !f.type).map(f => f.date);
+                              if (fakeDates.length > 0) guidance.push(`در روزهای ${fakeDates.join(', ')} spend غیرواقعی (بیش از ۹ ساعت) ثبت شده است.`);
+                              const extremeFakeDates = u.dailySummary.filter(d => d.spent > 12 * 3600).map(d => d.date);
+                              if (extremeFakeDates.length > 0) guidance.push(`در روزهای ${extremeFakeDates.join(', ')} spend بسیار غیرواقعی (بیش از ۱۲ ساعت) ثبت شده است.`);
                         }
                         // پیام spend کمتر از حداقل
                         const belowMinDates = u.dailySummary.filter(d => d.spent > 0 && d.spent < 8 * 3600).map(d => d.date);
@@ -1934,19 +1973,19 @@ function master1() {
                         // trend عملکرد (ساده: مقایسه نیمه اول و دوم بازه)
                         let trend = 'stable';
                         if (u.dailySummary && u.dailySummary.length > 4) {
-                            const mid = Math.floor(u.dailySummary.length / 2);
-                            const firstHalfSum = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0);
-                            const secondHalfSum = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0);
-                            const firstHalf = firstHalfSum / (mid || 1);
-                            const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
-                            const totalSum = firstHalfSum + secondHalfSum;
-                            const H = 3600;
-                            const minSpendForTrend = 3 * H; // حداقل ۳ ساعت مجموع برای تحلیل روند
-                            const minAbsoluteDelta = 1 * H;  // حداقل اختلاف میانگین ۱ ساعت
-                            if (totalSum >= minSpendForTrend) {
-                                  if (secondHalf > firstHalf * 1.1 && (secondHalf - firstHalf) >= minAbsoluteDelta) trend = 'improving';
-                                  else if (secondHalf < firstHalf * 0.9 && (firstHalf - secondHalf) >= minAbsoluteDelta) trend = 'declining';
-                            }
+                              const mid = Math.floor(u.dailySummary.length / 2);
+                              const firstHalfSum = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0);
+                              const secondHalfSum = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0);
+                              const firstHalf = firstHalfSum / (mid || 1);
+                              const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
+                              const totalSum = firstHalfSum + secondHalfSum;
+                              const H = 3600;
+                              const minSpendForTrend = 3 * H; // حداقل ۳ ساعت مجموع برای تحلیل روند
+                              const minAbsoluteDelta = 1 * H; // حداقل اختلاف میانگین ۱ ساعت
+                              if (totalSum >= minSpendForTrend) {
+                                    if (secondHalf > firstHalf * 1.1 && secondHalf - firstHalf >= minAbsoluteDelta) trend = 'improving';
+                                    else if (secondHalf < firstHalf * 0.9 && firstHalf - secondHalf >= minAbsoluteDelta) trend = 'declining';
+                              }
                         }
                         u.summary.guidance = guidance;
                         u.summary.trend = trend;
@@ -2008,9 +2047,9 @@ function master1() {
                                     const H = 3600;
                                     const minSpendForTrend = 3 * H;
                                     const minAbsoluteDelta = 1 * H;
-                                    if ((firstHalfSum + secondHalfSum) >= minSpendForTrend) {
-                                          if (secondHalf > firstHalf * 1.1 && (secondHalf - firstHalf) >= minAbsoluteDelta) trend = 'improving';
-                                          else if (secondHalf < firstHalf * 0.9 && (firstHalf - secondHalf) >= minAbsoluteDelta) trend = 'declining';
+                                    if (firstHalfSum + secondHalfSum >= minSpendForTrend) {
+                                          if (secondHalf > firstHalf * 1.1 && secondHalf - firstHalf >= minAbsoluteDelta) trend = 'improving';
+                                          else if (secondHalf < firstHalf * 0.9 && firstHalf - secondHalf >= minAbsoluteDelta) trend = 'declining';
                                     }
                                     if (!u.summary) u.summary = {};
                                     u.summary.trend = trend;
@@ -2024,8 +2063,8 @@ function master1() {
                         let absencePenalty = absenceExpPenalty;
                         // اگر کل spend کمتر از ۵۰٪ حداقل مورد انتظار باشد، جریمه سنگین
                         if (u.totalSpent < minTotalExpected) {
-                            absencePenalty += 0.25;
-                            u.summary.guidance.push('کل spend شما در این بازه کمتر از ۵۰٪ حداقل مورد انتظار است.');
+                              absencePenalty += 0.25;
+                              u.summary.guidance.push('کل spend شما در این بازه کمتر از ۵۰٪ حداقل مورد انتظار است.');
                         }
                         absencePenalty = Math.min(0.9, absencePenalty);
                         u.absencePenalty = absencePenalty;
@@ -2098,11 +2137,7 @@ function master1() {
                         // absence: نسبت روزهای absence به کل روزهای کاری (۰ تا ۱)
                         const absenceRatioBreakdown = (u.absenceCount || 0) / (u.totalDays || 1);
                         // totalScore: ترکیبی از وزن‌های پویا
-                        let totalScore = Math.max(0, Math.min(1,
-                              weights.realness * realnessScoreBreakdown +
-                              weights.quality * qualityScoreBreakdown +
-                              weights.absence * (1 - absenceRatioBreakdown)
-                        ));
+                        let totalScore = Math.max(0, Math.min(1, weights.realness * realnessScoreBreakdown + weights.quality * qualityScoreBreakdown + weights.absence * (1 - absenceRatioBreakdown)));
                         // پاداش همراستایی spent و estimate در سطح یوزر (میانگین alignment آیتم‌ها)
                         let userEstimateAlignment = 0;
                         let userEstimateAlignmentCount = 0;
@@ -2195,18 +2230,18 @@ function master1() {
                         closedIssuesCount: Object.values(u.issues).filter(iss => iss.state === 'closed').length,
                         dailySummary: u.dailySummary,
                         issues: Object.values(u.issues).map(iss => ({
-                            iid: iss.iid,
-                            title: iss.title,
-                            state: iss.state,
-                            labels: iss.labels,
-                            time_stats: iss.time_stats,
-                            milestone: iss.milestone,
-                            created_at: iss.created_at,
-                            updated_at: iss.updated_at,
-                            spentInRange: iss.spentInRange,
-                            commentsInRange: iss.commentsInRange,
-                            quality: iss.quality,
-                            suspiciousReasons: iss.suspiciousReasons,
+                              iid: iss.iid,
+                              title: iss.title,
+                              state: iss.state,
+                              labels: iss.labels,
+                              time_stats: iss.time_stats,
+                              milestone: iss.milestone,
+                              created_at: iss.created_at,
+                              updated_at: iss.updated_at,
+                              spentInRange: iss.spentInRange,
+                              commentsInRange: iss.commentsInRange,
+                              quality: iss.quality,
+                              suspiciousReasons: iss.suspiciousReasons,
                         })),
                         labels: Array.from(u.labels),
                   }));
