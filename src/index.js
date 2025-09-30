@@ -1228,6 +1228,12 @@ function master1() {
       });
 
       app.get('/activity-range', async (req, res) => {
+            // --- تعریف وزن‌های امتیازدهی ---
+            const weights = {
+                  realness: 0.5, // واقعیت فعالیت
+                  quality: 0.3,  // کیفیت ایشوها
+                  absence: 0.2   // غیبت
+            };
             try {
                   const { users, from, to } = req.query;
 
@@ -1861,6 +1867,119 @@ function master1() {
                         }
                         u.summary.guidance = guidance;
                         u.summary.trend = trend;
+                        // --- شناسایی absence (روزهای بدون فعالیت) ---
+                        const absenceDays = [];
+                        const allDates = [];
+                        let d = new Date(fromDate);
+                        while (d <= toDate) {
+                              if (d.getDay() !== 5 && d.getDay() !== 6) {
+                                    allDates.push(toKey(d));
+                              }
+                              d.setDate(d.getDate() + 1);
+                        }
+                        for (const date of allDates) {
+                              const spent = u.byDate && u.byDate[date] ? u.byDate[date] : 0;
+                              if (spent === 0) absenceDays.push(date);
+                        }
+                        u.absenceDays = absenceDays;
+                        u.absenceCount = absenceDays.length;
+                        if (!u.absencePenalty) u.absencePenalty = 0;
+                        u.absencePenalty = Math.min(0.5, 0.08 * absenceDays.length);
+                        u.realnessPercent = Math.max(0, u.realnessPercent - u.absencePenalty * 100);
+                        if (!u.summary) u.summary = {};
+                        if (!u.summary.guidance) u.summary.guidance = [];
+                        // --- guidance تاریخ‌دار absence ---
+                        for (const date of absenceDays) {
+                              u.summary.guidance.push(`در تاریخ ${date} هیچ فعالیتی ثبت نشده است.`);
+                        }
+                        // --- guidance fake spend و زیر حداقل ---
+                        if (u.dailySummary) {
+                              for (const day of u.dailySummary) {
+                                    if (day.spent === 0) continue;
+                                    if (day.spent < 8 * 3600) {
+                                          u.summary.guidance.push(`در تاریخ ${day.date} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
+                                    } else if (day.spent > 9 * 3600) {
+                                          u.summary.guidance.push(`در تاریخ ${day.date} spend غیرواقعی (بیش از ۹ ساعت) ثبت شده است.`);
+                                    }
+                              }
+                        }
+                        u.summary.absenceDays = absenceDays;
+                        u.summary.absenceCount = absenceDays.length;
+                        // --- دلایل فارسی برای suspiciousReasons هر ایشو ---
+                        const reasonMap = {
+                              missing_title: 'عنوان وارد نشده است.',
+                              missing_description: 'توضیحات وارد نشده است.',
+                              spent_equals_estimate: 'spent دقیقاً برابر estimate است (غیرواقعی به نظر می‌رسد).',
+                              no_spent: 'هیچ spent ثبت نشده است.',
+                              no_estimate: 'هیچ برآورد زمانی ثبت نشده است.',
+                              few_labels: 'تعداد لیبل کمتر از حداقل است.',
+                              missing_status_label: 'لیبل وضعیت ثبت نشده است.',
+                              many_description_edits: 'توضیحات ایشو بیش از حد ویرایش شده است.',
+                              large_one_off_spend: 'یک spend بزرگ یکجا ثبت شده است.',
+                        };
+                        for (const iss of Object.values(u.issues)) {
+                              if (Array.isArray(iss.suspiciousReasons) && iss.suspiciousReasons.length > 0) {
+                                    iss.suspiciousReasonsText = iss.suspiciousReasons.map(r => reasonMap[r] || r);
+                              } else {
+                                    iss.suspiciousReasonsText = [];
+                              }
+                        }
+                        // --- breakdown امتیازها ---
+                        // realness: درصد واقعیت فعالیت (۰ تا ۱)
+                        const realnessScoreBreakdown = (u.realnessPercent || 0) / 100;
+                        // quality: میانگین qualityScore ایشوها (۰ تا ۱)
+                        let qualityScoreBreakdown = 0;
+                        let qualityCountBreakdown = 0;
+                        for (const iss of Object.values(u.issues)) {
+                              if (iss.quality && typeof iss.quality.qualityScore === 'number') {
+                                    qualityScoreBreakdown += iss.quality.qualityScore;
+                                    qualityCountBreakdown++;
+                              }
+                        }
+                        qualityScoreBreakdown = qualityCountBreakdown > 0 ? qualityScoreBreakdown / qualityCountBreakdown : 0;
+                        // absence: نسبت روزهای absence به کل روزهای کاری (۰ تا ۱)
+                        const absenceRatioBreakdown = (u.absenceCount || 0) / (u.totalDays || 1);
+                        // totalScore: ترکیبی از وزن‌های پویا
+                        const totalScore = Math.max(0, Math.min(1,
+                              weights.realness * realnessScoreBreakdown +
+                              weights.quality * qualityScoreBreakdown +
+                              weights.absence * (1 - absenceRatioBreakdown)
+                        ));
+                        // اضافه به summary
+                        if (!u.summary) u.summary = {};
+                        u.summary.scores = {
+                              realness: Number(realnessScoreBreakdown.toFixed(2)),
+                              quality: Number(qualityScoreBreakdown.toFixed(2)),
+                              absence: Number(absenceRatioBreakdown.toFixed(2)),
+                              totalScore: Number(totalScore.toFixed(2)),
+                        };
+                        u.summary.weightsUsed = { ...weights };
+                        // --- guidance مثبت و منفی بر اساس trend ---
+                        if (u.summary && u.summary.trend) {
+                              if (u.summary.trend === 'improving') {
+                                    u.summary.guidance.push('عملکرد شما در روزهای اخیر رو به بهبود است. ادامه دهید!');
+                              } else if (u.summary.trend === 'declining') {
+                                    u.summary.guidance.push('عملکرد شما در روزهای اخیر افت داشته است. لطفاً دقت بیشتری داشته باشید.');
+                              }
+                        }
+                        // --- تحلیل توزیع spend در روزهای بازه ---
+                        if (u.dailySummary && u.dailySummary.length > 0) {
+                              const totalSpent = u.dailySummary.reduce((sum, d) => sum + d.spent, 0);
+                              const sortedDays = [...u.dailySummary].sort((a, b) => b.spent - a.spent);
+                              const top1 = sortedDays[0]?.spent || 0;
+                              const top2 = sortedDays[1]?.spent || 0;
+                              const top1Percent = totalSpent > 0 ? top1 / totalSpent : 0;
+                              const top2Percent = totalSpent > 0 ? (top1 + top2) / totalSpent : 0;
+                              u.summary.spendDistribution = {
+                                    top1Percent: Number((top1Percent * 100).toFixed(1)),
+                                    top2Percent: Number((top2Percent * 100).toFixed(1)),
+                              };
+                              if (top1Percent > 0.6) {
+                                    u.summary.guidance.push('بیش از ۶۰٪ spend شما فقط در یک روز ثبت شده است. لطفاً spend را به صورت منظم‌تر در روزهای مختلف وارد کنید.');
+                              } else if (top2Percent > 0.6) {
+                                    u.summary.guidance.push('بیش از ۶۰٪ spend شما فقط در دو روز ثبت شده است. بهتر است spend را در روزهای بیشتری توزیع کنید.');
+                              }
+                        }
                   }
 
                   const results = Object.values(usersMap).map(u => ({
