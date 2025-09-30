@@ -1,0 +1,1 @@
+{{base_url}}/projects/91/issues?page=1&per_page=50&state&labels&milestone&author_username&order_by&search&in&created_before&created_after&sort&iid[]

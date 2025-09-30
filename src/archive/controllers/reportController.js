@@ -83,11 +83,9 @@ export async function milestonesReport(req, res) {
 
     res.json(results);
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to build report",
-        error: error?.response?.data || error.message,
-      });
+    res.status(500).json({
+      message: "Failed to build report",
+      error: error?.response?.data || error.message,
+    });
   }
 }

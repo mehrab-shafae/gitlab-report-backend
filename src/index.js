@@ -64,12 +64,10 @@ app.get("/milestones", async (req, res) => {
     });
   } catch (error) {
     console.log(45);
-    res
-      .status(500)
-      .json({
-        message: "Failed to fetch milestones report",
-        error: error?.message || String(error),
-      });
+    res.status(500).json({
+      message: "Failed to fetch milestones report",
+      error: error?.message || String(error),
+    });
   }
 });
 
@@ -123,7 +121,10 @@ app.get("/labels", async (req, res) => {
       if (Array.isArray(req.query.labels)) {
         andLabels = req.query.labels;
       } else if (typeof req.query.labels === "string") {
-        andLabels = req.query.labels.split(",").map((l) => l.trim()).filter(Boolean);
+        andLabels = req.query.labels
+          .split(",")
+          .map((l) => l.trim())
+          .filter(Boolean);
       }
     }
 
@@ -610,7 +611,9 @@ app.get("/milestone-daily-spends", async (req, res) => {
       if (typeof body !== "string") return { seconds: 0, forDate: null };
       const lowered = body.toLowerCase();
       // Deletion form: "deleted X of spent time from YYYY-MM-DD"
-      const del = lowered.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+      const del = lowered.match(
+        /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
+      );
       const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
       const H = 3600;
       const D = 8 * H; // GitLab: 1d = 8h
@@ -635,7 +638,8 @@ app.get("/milestone-daily-spends", async (req, res) => {
         return { seconds: -seconds, forDate };
       }
       const isAdd = lowered.includes("added") && lowered.includes("time spent");
-      const isSub = lowered.includes("subtracted") && lowered.includes("time spent");
+      const isSub =
+        lowered.includes("subtracted") && lowered.includes("time spent");
       if (!isAdd && !isSub) return { seconds: 0, forDate: null };
       let seconds = 0;
       let mm;
@@ -687,11 +691,14 @@ app.get("/milestone-daily-spends", async (req, res) => {
 
         for (const note of notes) {
           if (!note?.body || !note?.created_at || !note?.author?.id) continue;
-          const { seconds: deltaSeconds, forDate } = parseSpentFromNote(note.body);
+          const { seconds: deltaSeconds, forDate } = parseSpentFromNote(
+            note.body,
+          );
           if (deltaSeconds === 0) continue;
 
           // Use referenced date for deletions; otherwise use note.created_at day
-          const dateKey = forDate || new Date(note.created_at).toISOString().slice(0, 10);
+          const dateKey =
+            forDate || new Date(note.created_at).toISOString().slice(0, 10);
           const author = note.author;
           const uid = author.id;
 
@@ -777,9 +784,12 @@ app.get("/labels-report", async (req, res) => {
         const params = new URLSearchParams();
         if (milestone) params.append("milestone", milestone);
         // state: opened | closed | all  (پیش‌فرض: فقط باز)
-        let desiredState = (req.query.state || "opened").toString().toLowerCase();
+        let desiredState = (req.query.state || "opened")
+          .toString()
+          .toLowerCase();
         if (desiredState === "open") desiredState = "opened"; // نگاشت open -> opened برای GitLab
-        if (!["opened", "closed", "all"].includes(desiredState)) desiredState = "opened";
+        if (!["opened", "closed", "all"].includes(desiredState))
+          desiredState = "opened";
         params.set("state", desiredState);
         params.set("per_page", String(perPage));
         params.set("page", String(page));
@@ -823,7 +833,7 @@ app.get("/labels-report", async (req, res) => {
     const filteredIssues = allIssues.filter(
       (issue) =>
         Array.isArray(issue.labels) &&
-        labelList.every((lbl) => issue.labels.includes(lbl))
+        labelList.every((lbl) => issue.labels.includes(lbl)),
     );
 
     // محاسبات و خروجی بر اساس filteredIssues
@@ -834,9 +844,7 @@ app.get("/labels-report", async (req, res) => {
     const issueCount = filteredIssues.length;
     const uniqueUsers = new Set(
       filteredIssues.flatMap((issue) => {
-        const assignees = Array.isArray(issue.assignees)
-          ? issue.assignees
-          : [];
+        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
         const legacyAssignee = issue.assignee ? [issue.assignee] : [];
         return [...assignees, ...legacyAssignee]
           .map((a) => a?.id)
@@ -919,7 +927,9 @@ app.get("/daily-report", async (req, res) => {
       const W = 5 * D;
       const MO = 4 * W;
       // Deletion form attributes to a specific date
-      const del = lowered.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+      const del = lowered.match(
+        /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
+      );
       if (del) {
         const duration = del[1];
         const forDate = del[2];
@@ -939,7 +949,8 @@ app.get("/daily-report", async (req, res) => {
         return { seconds: -seconds, forDate };
       }
       const isAdd = lowered.includes("added") && lowered.includes("time spent");
-      const isSub = lowered.includes("subtracted") && lowered.includes("time spent");
+      const isSub =
+        lowered.includes("subtracted") && lowered.includes("time spent");
       if (!isAdd && !isSub) return { seconds: 0, forDate: null };
       let seconds = 0;
       let mm;
@@ -988,7 +999,9 @@ app.get("/daily-report", async (req, res) => {
           if (!createdAt || !note.body) continue;
           const noteDate = new Date(createdAt).toISOString().slice(0, 10);
 
-          const { seconds: deltaSeconds, forDate } = parseSpentFromNote(note.body);
+          const { seconds: deltaSeconds, forDate } = parseSpentFromNote(
+            note.body,
+          );
           if (deltaSeconds === 0) continue;
           // If deletion references another date, attribute to that date; otherwise use noteDate
           const targetKey = forDate || noteDate;
@@ -1041,22 +1054,18 @@ app.post("/login", async (req, res) => {
 
     const user = await User.findOne({ username, password }).lean();
     if (!user) {
-      return res
-        .status(401)
-        .json({
-          status: "error",
-          message: "نام کاربری یا رمز عبور اشتباه است",
-        });
+      return res.status(401).json({
+        status: "error",
+        message: "نام کاربری یا رمز عبور اشتباه است",
+      });
     }
 
     return res.json({ status: "ok", message: "ورود موفق بود", user });
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        message: "خطا در بررسی ورود",
-        error: error?.message || String(error),
-      });
+    return res.status(500).json({
+      message: "خطا در بررسی ورود",
+      error: error?.message || String(error),
+    });
   }
 });
 
@@ -1079,12 +1088,10 @@ app.post("/register", async (req, res) => {
     const created = await User.create({ username, password });
     return res.status(201).json({ status: "ok", id: created._id });
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        message: "خطا در ثبت کاربر",
-        error: error?.message || String(error),
-      });
+    return res.status(500).json({
+      message: "خطا در ثبت کاربر",
+      error: error?.message || String(error),
+    });
   }
 });
 
@@ -1120,7 +1127,7 @@ app.get("/daily", async (req, res) => {
       if (batch.length < perPage) break;
       page++;
     }
-    console.log('Fetched issues:', allIssues.length)
+    console.log("Fetched issues:", allIssues.length);
     // بدون فیلتر لیبل؛ همه ایشوهای برد را پوشش می‌دهیم
 
     const usersMap = {};
@@ -1134,319 +1141,353 @@ app.get("/daily", async (req, res) => {
     }
     const issueChunks = chunkArray(allIssues, limit);
     for (const chunk of issueChunks) {
-      await Promise.all(chunk.map(async (issue) => {
-        if (!issue.iid) return;
-        // دریافت لیست افرادی که assignee این ایشو هستند (یا legacy assignee)
-        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
-        const legacy = issue.assignee ? [issue.assignee] : [];
-        const recipients = assignees.length > 0 ? assignees : legacy;
+      await Promise.all(
+        chunk.map(async (issue) => {
+          if (!issue.iid) return;
+          // دریافت لیست افرادی که assignee این ایشو هستند (یا legacy assignee)
+          const assignees = Array.isArray(issue.assignees)
+            ? issue.assignees
+            : [];
+          const legacy = issue.assignee ? [issue.assignee] : [];
+          const recipients = assignees.length > 0 ? assignees : legacy;
 
-        // ۱) System notes: فقط time spent های امروز و فقط برای کاربری که assignee این ایشوست
-        const notesResp = await fetch(
-          `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+          // ۱) System notes: فقط time spent های امروز و فقط برای کاربری که assignee این ایشوست
+          const notesResp = await fetch(
+            `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+              },
             },
-          },
-        );
-        let systemNotes = [];
-        if (notesResp.ok) {
-          systemNotes = await notesResp.json();
-        }
+          );
+          let systemNotes = [];
+          if (notesResp.ok) {
+            systemNotes = await notesResp.json();
+          }
 
-        // ۱-الف) منبع اصلی محاسبه: رویدادهای time tracking
-        let hasAnyEventForIssueToday = false;
-        const eventsResp = await fetch(
-          `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/resource_time_tracking_events?per_page=100`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+          // ۱-الف) منبع اصلی محاسبه: رویدادهای time tracking
+          let hasAnyEventForIssueToday = false;
+          const eventsResp = await fetch(
+            `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/resource_time_tracking_events?per_page=100`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+              },
             },
-          },
-        );
-        if (eventsResp.ok) {
-          const events = await eventsResp.json();
-          for (const ev of events) {
-            const evDate = ev?.created_at ? new Date(ev.created_at).toISOString().slice(0, 10) : null;
-            if (evDate !== targetDate) continue;
-            const uid = ev?.user?.id;
-            if (!uid) continue;
-            const isAssignee = recipients.some((p) => p && p.id === uid);
-            if (!isAssignee) continue;
-            const delta = Number(ev.time_spent) || 0; // مثبت یا منفی
-            if (delta === 0) continue;
-            hasAnyEventForIssueToday = true;
+          );
+          if (eventsResp.ok) {
+            const events = await eventsResp.json();
+            for (const ev of events) {
+              const evDate = ev?.created_at
+                ? new Date(ev.created_at).toISOString().slice(0, 10)
+                : null;
+              if (evDate !== targetDate) continue;
+              const uid = ev?.user?.id;
+              if (!uid) continue;
+              const isAssignee = recipients.some((p) => p && p.id === uid);
+              if (!isAssignee) continue;
+              const delta = Number(ev.time_spent) || 0; // مثبت یا منفی
+              if (delta === 0) continue;
+              hasAnyEventForIssueToday = true;
 
-            if (!usersMap[uid]) {
-              usersMap[uid] = {
-                userId: uid,
-                username: ev.user.username || "",
-                name: ev.user.name || "",
-                avatar_url: ev.user.avatar_url || "",
-                dailySpent: 0,
-                issues: {},
-                labels: new Set(),
-              };
-            }
-            if (!usersMap[uid].issues[issue.iid]) {
-              usersMap[uid].issues[issue.iid] = {
-                iid: issue.iid,
-                title: issue.title,
-                labels: issue.labels,
-                time_stats: issue.time_stats,
-                milestone: issue.milestone,
-                created_at: issue.created_at,
-                updated_at: issue.updated_at,
-                dailySpent: 0,
-                commentsToday: 0,
-                activityLogs: [],
-              };
-              if (Array.isArray(issue.labels)) {
-                issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+              if (!usersMap[uid]) {
+                usersMap[uid] = {
+                  userId: uid,
+                  username: ev.user.username || "",
+                  name: ev.user.name || "",
+                  avatar_url: ev.user.avatar_url || "",
+                  dailySpent: 0,
+                  issues: {},
+                  labels: new Set(),
+                };
               }
-            }
-            usersMap[uid].dailySpent += delta;
-            usersMap[uid].issues[issue.iid].dailySpent += delta;
-            usersMap[uid].issues[issue.iid].activityLogs.push({
-              type: "time_spent_changed",
-              at: ev.created_at,
-              by: uid,
-              details: { seconds: delta },
-              body: "",
-            });
-          }
-        }
-
-        // ۱-الف-تکمیلی) اعمال حذف‌ها: system note هایی که فرمت "deleted X of spent time from YYYY-MM-DD" دارند
-        if (Array.isArray(systemNotes) && systemNotes.length > 0) {
-          for (const note of systemNotes) {
-            if (!note?.body || !note?.created_at || !note?.author?.id) continue;
-            const createdKey = new Date(note.created_at).toISOString().slice(0, 10);
-            if (createdKey !== targetDate) continue; // فقط نوت‌های ساخته‌شده امروز
-            const uid = note.author.id;
-            const isAssignee = recipients.some((p) => p && p.id === uid);
-            if (!isAssignee) continue;
-
-            const raw = String(note.body);
-            const m1 = raw.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
-            if (!m1) continue;
-            const duration = m1[1];
-            const fromDate = m1[2];
-            if (fromDate !== targetDate) continue; // حذف مربوط به همین روز باشد
-
-            let seconds = 0;
-            const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
-            let mm;
-            while ((mm = unitRe2.exec(duration)) !== null) {
-              const val = parseInt(mm[1], 10);
-              const unit = mm[2].toLowerCase();
-              if (Number.isNaN(val)) continue;
-              const H = 3600;
-              const D = 8 * H; // GitLab: 1d = 8h
-              const W = 5 * D; // GitLab: 1w = 5d
-              const MO = 4 * W; // GitLab: 1mo = 4w
-              if (unit === "mo") seconds += val * MO;
-              else if (unit === "w") seconds += val * W;
-              else if (unit === "d") seconds += val * D;
-              else if (unit === "h") seconds += val * H;
-              else if (unit === "m") seconds += val * 60;
-              else if (unit === "s") seconds += val;
-            }
-            if (seconds === 0) continue;
-            const delta = -seconds; // حذف به صورت منفی
-
-            if (!usersMap[uid]) {
-              usersMap[uid] = {
-                userId: uid,
-                username: note.author.username || "",
-                name: note.author.name || "",
-                avatar_url: note.author.avatar_url || "",
-                dailySpent: 0,
-                issues: {},
-                labels: new Set(),
-              };
-            }
-            if (!usersMap[uid].issues[issue.iid]) {
-              usersMap[uid].issues[issue.iid] = {
-                iid: issue.iid,
-                title: issue.title,
-                labels: issue.labels,
-                time_stats: issue.time_stats,
-                milestone: issue.milestone,
-                created_at: issue.created_at,
-                updated_at: issue.updated_at,
-                dailySpent: 0,
-                commentsToday: 0,
-                activityLogs: [],
-              };
-              if (Array.isArray(issue.labels)) {
-                issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+              if (!usersMap[uid].issues[issue.iid]) {
+                usersMap[uid].issues[issue.iid] = {
+                  iid: issue.iid,
+                  title: issue.title,
+                  labels: issue.labels,
+                  time_stats: issue.time_stats,
+                  milestone: issue.milestone,
+                  created_at: issue.created_at,
+                  updated_at: issue.updated_at,
+                  dailySpent: 0,
+                  commentsToday: 0,
+                  activityLogs: [],
+                };
+                if (Array.isArray(issue.labels)) {
+                  issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+                }
               }
+              usersMap[uid].dailySpent += delta;
+              usersMap[uid].issues[issue.iid].dailySpent += delta;
+              usersMap[uid].issues[issue.iid].activityLogs.push({
+                type: "time_spent_changed",
+                at: ev.created_at,
+                by: uid,
+                details: { seconds: delta },
+                body: "",
+              });
             }
-            usersMap[uid].dailySpent += delta;
-            usersMap[uid].issues[issue.iid].dailySpent += delta;
-            usersMap[uid].issues[issue.iid].activityLogs.push({
-              type: "time_spent_changed",
-              at: note.created_at,
-              by: uid,
-              details: { seconds: delta },
-              body: raw,
-            });
           }
-        }
 
-        // ۱-ب) fallback: اگر events امروز موجود نبود، از system notes parse کن
-        if (!hasAnyEventForIssueToday && Array.isArray(systemNotes) && systemNotes.length > 0) {
-          for (const note of systemNotes) {
-            if (!note?.body || !note?.created_at || !note?.author?.id) continue;
-            const noteDate = new Date(note.created_at).toISOString().slice(0, 10);
-            if (noteDate !== targetDate) continue;
-            const body = String(note.body).toLowerCase();
-            const isAdd = body.includes("added") && body.includes("time spent");
-            const isSub = body.includes("subtracted") && body.includes("time spent");
-            if (!isAdd && !isSub) continue;
-            let seconds = 0;
-            const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
-            let m;
-            while ((m = unitRe.exec(body)) !== null) {
-              const val = parseInt(m[1], 10);
-              const unit = m[2].toLowerCase();
-              if (Number.isNaN(val)) continue;
-              const H = 3600;
-              const D = 8 * H; // GitLab: 1d = 8h
-              const W = 5 * D; // GitLab: 1w = 5d
-              const MO = 4 * W; // GitLab: 1mo = 4w
-              if (unit === "mo") seconds += val * MO;
-              else if (unit === "w") seconds += val * W;
-              else if (unit === "d") seconds += val * D;
-              else if (unit === "h") seconds += val * H;
-              else if (unit === "m") seconds += val * 60;
-              else if (unit === "s") seconds += val;
-            }
-            if (seconds === 0) continue;
-            const uid = note.author.id;
-            const isAssignee = recipients.some((p) => p && p.id === uid);
-            if (!isAssignee) continue;
+          // ۱-الف-تکمیلی) اعمال حذف‌ها: system note هایی که فرمت "deleted X of spent time from YYYY-MM-DD" دارند
+          if (Array.isArray(systemNotes) && systemNotes.length > 0) {
+            for (const note of systemNotes) {
+              if (!note?.body || !note?.created_at || !note?.author?.id)
+                continue;
+              const createdKey = new Date(note.created_at)
+                .toISOString()
+                .slice(0, 10);
+              if (createdKey !== targetDate) continue; // فقط نوت‌های ساخته‌شده امروز
+              const uid = note.author.id;
+              const isAssignee = recipients.some((p) => p && p.id === uid);
+              if (!isAssignee) continue;
 
-            const delta = isSub ? -seconds : seconds;
+              const raw = String(note.body);
+              const m1 = raw.match(
+                /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
+              );
+              if (!m1) continue;
+              const duration = m1[1];
+              const fromDate = m1[2];
+              if (fromDate !== targetDate) continue; // حذف مربوط به همین روز باشد
 
-            if (!usersMap[uid]) {
-              usersMap[uid] = {
-                userId: uid,
-                username: note.author.username || "",
-                name: note.author.name || "",
-                avatar_url: note.author.avatar_url || "",
-                dailySpent: 0,
-                issues: {},
-                labels: new Set(),
-              };
-            }
-            if (!usersMap[uid].issues[issue.iid]) {
-              usersMap[uid].issues[issue.iid] = {
-                iid: issue.iid,
-                title: issue.title,
-                labels: issue.labels,
-                time_stats: issue.time_stats,
-                milestone: issue.milestone,
-                created_at: issue.created_at,
-                updated_at: issue.updated_at,
-                dailySpent: 0,
-                commentsToday: 0,
-                activityLogs: [],
-              };
-              if (Array.isArray(issue.labels)) {
-                issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+              let seconds = 0;
+              const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+              let mm;
+              while ((mm = unitRe2.exec(duration)) !== null) {
+                const val = parseInt(mm[1], 10);
+                const unit = mm[2].toLowerCase();
+                if (Number.isNaN(val)) continue;
+                const H = 3600;
+                const D = 8 * H; // GitLab: 1d = 8h
+                const W = 5 * D; // GitLab: 1w = 5d
+                const MO = 4 * W; // GitLab: 1mo = 4w
+                if (unit === "mo") seconds += val * MO;
+                else if (unit === "w") seconds += val * W;
+                else if (unit === "d") seconds += val * D;
+                else if (unit === "h") seconds += val * H;
+                else if (unit === "m") seconds += val * 60;
+                else if (unit === "s") seconds += val;
               }
-            }
-            usersMap[uid].dailySpent += delta;
-            usersMap[uid].issues[issue.iid].dailySpent += delta;
-            usersMap[uid].issues[issue.iid].activityLogs.push({
-              type: "time_spent_changed",
-              at: note.created_at,
-              by: uid,
-              details: { seconds: delta },
-              body: note.body,
-            });
-          }
-        }
+              if (seconds === 0) continue;
+              const delta = -seconds; // حذف به صورت منفی
 
-        // ۲) Non-system notes: شمارش کامنت های امروز از طرف assignee
-        const commentsResp = await fetch(
-          `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?per_page=100`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+              if (!usersMap[uid]) {
+                usersMap[uid] = {
+                  userId: uid,
+                  username: note.author.username || "",
+                  name: note.author.name || "",
+                  avatar_url: note.author.avatar_url || "",
+                  dailySpent: 0,
+                  issues: {},
+                  labels: new Set(),
+                };
+              }
+              if (!usersMap[uid].issues[issue.iid]) {
+                usersMap[uid].issues[issue.iid] = {
+                  iid: issue.iid,
+                  title: issue.title,
+                  labels: issue.labels,
+                  time_stats: issue.time_stats,
+                  milestone: issue.milestone,
+                  created_at: issue.created_at,
+                  updated_at: issue.updated_at,
+                  dailySpent: 0,
+                  commentsToday: 0,
+                  activityLogs: [],
+                };
+                if (Array.isArray(issue.labels)) {
+                  issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+                }
+              }
+              usersMap[uid].dailySpent += delta;
+              usersMap[uid].issues[issue.iid].dailySpent += delta;
+              usersMap[uid].issues[issue.iid].activityLogs.push({
+                type: "time_spent_changed",
+                at: note.created_at,
+                by: uid,
+                details: { seconds: delta },
+                body: raw,
+              });
+            }
+          }
+
+          // ۱-ب) fallback: اگر events امروز موجود نبود، از system notes parse کن
+          if (
+            !hasAnyEventForIssueToday &&
+            Array.isArray(systemNotes) &&
+            systemNotes.length > 0
+          ) {
+            for (const note of systemNotes) {
+              if (!note?.body || !note?.created_at || !note?.author?.id)
+                continue;
+              const noteDate = new Date(note.created_at)
+                .toISOString()
+                .slice(0, 10);
+              if (noteDate !== targetDate) continue;
+              const body = String(note.body).toLowerCase();
+              const isAdd =
+                body.includes("added") && body.includes("time spent");
+              const isSub =
+                body.includes("subtracted") && body.includes("time spent");
+              if (!isAdd && !isSub) continue;
+              let seconds = 0;
+              const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+              let m;
+              while ((m = unitRe.exec(body)) !== null) {
+                const val = parseInt(m[1], 10);
+                const unit = m[2].toLowerCase();
+                if (Number.isNaN(val)) continue;
+                const H = 3600;
+                const D = 8 * H; // GitLab: 1d = 8h
+                const W = 5 * D; // GitLab: 1w = 5d
+                const MO = 4 * W; // GitLab: 1mo = 4w
+                if (unit === "mo") seconds += val * MO;
+                else if (unit === "w") seconds += val * W;
+                else if (unit === "d") seconds += val * D;
+                else if (unit === "h") seconds += val * H;
+                else if (unit === "m") seconds += val * 60;
+                else if (unit === "s") seconds += val;
+              }
+              if (seconds === 0) continue;
+              const uid = note.author.id;
+              const isAssignee = recipients.some((p) => p && p.id === uid);
+              if (!isAssignee) continue;
+
+              const delta = isSub ? -seconds : seconds;
+
+              if (!usersMap[uid]) {
+                usersMap[uid] = {
+                  userId: uid,
+                  username: note.author.username || "",
+                  name: note.author.name || "",
+                  avatar_url: note.author.avatar_url || "",
+                  dailySpent: 0,
+                  issues: {},
+                  labels: new Set(),
+                };
+              }
+              if (!usersMap[uid].issues[issue.iid]) {
+                usersMap[uid].issues[issue.iid] = {
+                  iid: issue.iid,
+                  title: issue.title,
+                  labels: issue.labels,
+                  time_stats: issue.time_stats,
+                  milestone: issue.milestone,
+                  created_at: issue.created_at,
+                  updated_at: issue.updated_at,
+                  dailySpent: 0,
+                  commentsToday: 0,
+                  activityLogs: [],
+                };
+                if (Array.isArray(issue.labels)) {
+                  issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+                }
+              }
+              usersMap[uid].dailySpent += delta;
+              usersMap[uid].issues[issue.iid].dailySpent += delta;
+              usersMap[uid].issues[issue.iid].activityLogs.push({
+                type: "time_spent_changed",
+                at: note.created_at,
+                by: uid,
+                details: { seconds: delta },
+                body: note.body,
+              });
+            }
+          }
+
+          // ۲) Non-system notes: شمارش کامنت های امروز از طرف assignee
+          const commentsResp = await fetch(
+            `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?per_page=100`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
+              },
             },
-          },
-        );
-        if (commentsResp.ok) {
-          const comments = await commentsResp.json();
-          for (const note of comments) {
-            // system=true موارد قبلاً پردازش شده اند؛ اینجا فقط non-system ها را می‌شماریم
-            if (note?.system) continue;
-            if (!note?.created_at || !note?.author?.id) continue;
-            const noteDate = new Date(note.created_at).toISOString().slice(0, 10);
-            if (noteDate !== targetDate) continue;
-            const uid = note.author.id;
-            const isAssignee = recipients.some((p) => p && p.id === uid);
-            if (!isAssignee) continue;
+          );
+          if (commentsResp.ok) {
+            const comments = await commentsResp.json();
+            for (const note of comments) {
+              // system=true موارد قبلاً پردازش شده اند؛ اینجا فقط non-system ها را می‌شماریم
+              if (note?.system) continue;
+              if (!note?.created_at || !note?.author?.id) continue;
+              const noteDate = new Date(note.created_at)
+                .toISOString()
+                .slice(0, 10);
+              if (noteDate !== targetDate) continue;
+              const uid = note.author.id;
+              const isAssignee = recipients.some((p) => p && p.id === uid);
+              if (!isAssignee) continue;
 
-            if (!usersMap[uid]) {
-              usersMap[uid] = {
-                userId: uid,
-                username: note.author.username || "",
-                name: note.author.name || "",
-                avatar_url: note.author.avatar_url || "",
-                dailySpent: 0,
-                issues: {},
-                labels: new Set(),
-              };
-            }
-            if (!usersMap[uid].issues[issue.iid]) {
-              usersMap[uid].issues[issue.iid] = {
-                iid: issue.iid,
-                title: issue.title,
-                labels: issue.labels,
-                time_stats: issue.time_stats,
-                milestone: issue.milestone,
-                updated_at: issue.updated_at,
-                dailySpent: 0,
-                commentsToday: 0,
-                activityLogs: [],
-              };
-              if (Array.isArray(issue.labels)) {
-                issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+              if (!usersMap[uid]) {
+                usersMap[uid] = {
+                  userId: uid,
+                  username: note.author.username || "",
+                  name: note.author.name || "",
+                  avatar_url: note.author.avatar_url || "",
+                  dailySpent: 0,
+                  issues: {},
+                  labels: new Set(),
+                };
               }
-            }
-            usersMap[uid].issues[issue.iid].commentsToday += 1;
-            const lastEditedAt = note.last_edited_at || note.updated_at;
-            const editor = note.last_edited_by || note.editor || note.author;
-            if (lastEditedAt) {
-              const editDate = new Date(lastEditedAt).toISOString().slice(0, 10);
-              if (editDate === targetDate && editor && editor.id === uid && note.created_at !== lastEditedAt) {
-                usersMap[uid].issues[issue.iid].activityLogs.push({
-                  type: "note_edited",
-                  at: lastEditedAt,
-                  by: uid,
-                  details: { id: note.id },
-                  body: typeof note.body === "string" ? note.body.slice(0, 200) : "",
-                });
+              if (!usersMap[uid].issues[issue.iid]) {
+                usersMap[uid].issues[issue.iid] = {
+                  iid: issue.iid,
+                  title: issue.title,
+                  labels: issue.labels,
+                  time_stats: issue.time_stats,
+                  milestone: issue.milestone,
+                  updated_at: issue.updated_at,
+                  dailySpent: 0,
+                  commentsToday: 0,
+                  activityLogs: [],
+                };
+                if (Array.isArray(issue.labels)) {
+                  issue.labels.forEach((l) => usersMap[uid].labels.add(l));
+                }
+              }
+              usersMap[uid].issues[issue.iid].commentsToday += 1;
+              const lastEditedAt = note.last_edited_at || note.updated_at;
+              const editor = note.last_edited_by || note.editor || note.author;
+              if (lastEditedAt) {
+                const editDate = new Date(lastEditedAt)
+                  .toISOString()
+                  .slice(0, 10);
+                if (
+                  editDate === targetDate &&
+                  editor &&
+                  editor.id === uid &&
+                  note.created_at !== lastEditedAt
+                ) {
+                  usersMap[uid].issues[issue.iid].activityLogs.push({
+                    type: "note_edited",
+                    at: lastEditedAt,
+                    by: uid,
+                    details: { id: note.id },
+                    body:
+                      typeof note.body === "string"
+                        ? note.body.slice(0, 200)
+                        : "",
+                  });
+                }
               }
             }
           }
-        }
-      }));
+        }),
+      );
     }
     // ۲. ایشوهایی که updated_at امروز دارند (حتی اگر note نداشته باشند)
     for (const issue of allIssues) {
-      const updatedDate = issue.updated_at ? new Date(issue.updated_at).toISOString().slice(0, 10) : null;
+      const updatedDate = issue.updated_at
+        ? new Date(issue.updated_at).toISOString().slice(0, 10)
+        : null;
       if (updatedDate !== targetDate) continue;
       const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
       const legacy = issue.assignee ? [issue.assignee] : [];
@@ -1485,7 +1526,7 @@ app.get("/daily", async (req, res) => {
         }
       }
     }
-    console.log('Notes and updated issues processed')
+    console.log("Notes and updated issues processed");
     // خروجی نهایی: فقط کاربرانی که امروز note دارند یا ایشویشان آپدیت شده
     const results = Object.values(usersMap).map((u) => ({
       userId: u.userId,
@@ -1513,7 +1554,9 @@ app.get("/activity-range", async (req, res) => {
     const { users, from, to } = req.query;
 
     if (!projectId) {
-      return res.status(400).json({ message: "GITLAB_PROJECT_ID مشخص نشده است" });
+      return res
+        .status(400)
+        .json({ message: "GITLAB_PROJECT_ID مشخص نشده است" });
     }
     if (!users || !from || !to) {
       return res
@@ -1528,7 +1571,9 @@ app.get("/activity-range", async (req, res) => {
       .map((s) => Number(s))
       .filter((n) => !Number.isNaN(n));
     if (userIds.length === 0) {
-      return res.status(400).json({ message: "حداقل یک userId معتبر لازم است" });
+      return res
+        .status(400)
+        .json({ message: "حداقل یک userId معتبر لازم است" });
     }
 
     // Normalize date range (inclusive) in UTC YYYY-MM-DD
@@ -1558,20 +1603,27 @@ app.get("/activity-range", async (req, res) => {
         headers: {
           "Content-Type": "application/json",
           "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
-          "Connection": "keep-alive",
+          Connection: "keep-alive",
         },
       });
       if (!firstResp.ok) {
-        return res.status(500).json({ message: "مشکل در گرفتن دیتا از GitLab" });
+        return res
+          .status(500)
+          .json({ message: "مشکل در گرفتن دیتا از GitLab" });
       }
       const firstBatch = await firstResp.json();
       if (Array.isArray(firstBatch) && firstBatch.length > 0) {
         allIssues.push(...firstBatch);
       }
       const totalPagesHeader = firstResp.headers.get("x-total-pages");
-      const totalPages = totalPagesHeader ? parseInt(totalPagesHeader, 10) : null;
+      const totalPages = totalPagesHeader
+        ? parseInt(totalPagesHeader, 10)
+        : null;
       if (totalPages && totalPages > 1) {
-        const pageNumbers = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+        const pageNumbers = Array.from(
+          { length: totalPages - 1 },
+          (_, i) => i + 2,
+        );
         const pageResults = await Promise.all(
           pageNumbers.map(async (p) => {
             const pParams = new URLSearchParams();
@@ -1584,7 +1636,7 @@ app.get("/activity-range", async (req, res) => {
               headers: {
                 "Content-Type": "application/json",
                 "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
-                "Connection": "keep-alive",
+                Connection: "keep-alive",
               },
             });
             if (!r.ok) return [];
@@ -1607,7 +1659,7 @@ app.get("/activity-range", async (req, res) => {
             headers: {
               "Content-Type": "application/json",
               "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
-              "Connection": "keep-alive",
+              Connection: "keep-alive",
             },
           });
           if (!resp.ok) break;
@@ -1627,7 +1679,8 @@ app.get("/activity-range", async (req, res) => {
     );
     const chunkArray = (arr, size) => {
       const out = [];
-      for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+      for (let i = 0; i < arr.length; i += size)
+        out.push(arr.slice(i, i + size));
       return out;
     };
     const issueChunks = chunkArray(allIssues, limit);
@@ -1636,7 +1689,9 @@ app.get("/activity-range", async (req, res) => {
       await Promise.all(
         chunk.map(async (issue) => {
           if (!issue?.iid) return;
-          const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+          const assignees = Array.isArray(issue.assignees)
+            ? issue.assignees
+            : [];
           const legacy = issue.assignee ? [issue.assignee] : [];
           const recipients = assignees.length > 0 ? assignees : legacy;
 
@@ -1655,7 +1710,7 @@ app.get("/activity-range", async (req, res) => {
                 headers: {
                   "Content-Type": "application/json",
                   "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
-                  "Connection": "keep-alive",
+                  Connection: "keep-alive",
                 },
               },
             ),
@@ -1666,7 +1721,7 @@ app.get("/activity-range", async (req, res) => {
                 headers: {
                   "Content-Type": "application/json",
                   "PRIVATE-TOKEN": process.env.GITLAB_TOKEN,
-                  "Connection": "keep-alive",
+                  Connection: "keep-alive",
                 },
               },
             ),
@@ -1676,17 +1731,22 @@ app.get("/activity-range", async (req, res) => {
           if (sysNotesResp.ok) {
             const notes = await sysNotesResp.json();
             for (const note of notes) {
-              if (!note?.body || !note?.created_at || !note?.author?.id) continue;
+              if (!note?.body || !note?.created_at || !note?.author?.id)
+                continue;
               const noteKey = new Date(note.created_at)
                 .toISOString()
                 .slice(0, 10);
               const authorId = Number(note.author.id);
               if (!userIds.includes(authorId)) continue;
-              const isAssignee = recipients.some((p) => p && Number(p.id) === authorId);
+              const isAssignee = recipients.some(
+                (p) => p && Number(p.id) === authorId,
+              );
               if (!isAssignee) continue;
               const body = String(note.body).toLowerCase();
               // Handle explicit deletion notes: "deleted X of spent time from YYYY-MM-DD"
-              const delMatch = body.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+              const delMatch = body.match(
+                /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
+              );
               if (delMatch) {
                 const duration = delMatch[1];
                 const fromDateKey = delMatch[2];
@@ -1738,35 +1798,56 @@ app.get("/activity-range", async (req, res) => {
                     spentInRange: 0,
                     commentsInRange: 0,
                     quality: {
-                      hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
-                      hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
-                      labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
-                      hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some((l) => /status/i.test(String(l))) : false,
-                      estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
-                      spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                      hasTitle: Boolean(
+                        issue.title && String(issue.title).trim().length > 0,
+                      ),
+                      hasDescription: Boolean(
+                        issue.description &&
+                          String(issue.description).trim().length > 0,
+                      ),
+                      labelsCount: Array.isArray(issue.labels)
+                        ? issue.labels.length
+                        : 0,
+                      hasStatusLabel: Array.isArray(issue.labels)
+                        ? issue.labels.some((l) => /status/i.test(String(l)))
+                        : false,
+                      estimateIsZero: !(
+                        issue.time_stats &&
+                        Number(issue.time_stats.time_estimate) > 0
+                      ),
+                      spentIsZero: !(
+                        issue.time_stats &&
+                        Number(issue.time_stats.total_time_spent) > 0
+                      ),
                       spentEqualsEstimate: Boolean(
                         issue.time_stats &&
-                        Number(issue.time_stats.time_estimate) > 0 &&
-                        Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)
+                          Number(issue.time_stats.time_estimate) > 0 &&
+                          Number(issue.time_stats.total_time_spent) ===
+                            Number(issue.time_stats.time_estimate),
                       ),
                       descriptionEditsInRange: 0,
                       largeOneOffSpends: [],
                     },
                   };
                   if (Array.isArray(issue.labels)) {
-                    issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
+                    issue.labels.forEach((l) =>
+                      usersMap[authorId].labels.add(l),
+                    );
                   }
                 }
                 usersMap[authorId].issues[issue.iid].spentInRange -= seconds;
                 // attribute to referenced date
-                usersMap[authorId].byDate[fromDateKey] = (usersMap[authorId].byDate[fromDateKey] || 0) - seconds;
+                usersMap[authorId].byDate[fromDateKey] =
+                  (usersMap[authorId].byDate[fromDateKey] || 0) - seconds;
                 continue;
               }
 
               // Normal add/subtract entries; attribute to note date if in range
               if (!isInRange(noteKey)) continue;
-              const isAdd = body.includes("added") && body.includes("time spent");
-              const isSub = body.includes("subtracted") && body.includes("time spent");
+              const isAdd =
+                body.includes("added") && body.includes("time spent");
+              const isSub =
+                body.includes("subtracted") && body.includes("time spent");
               if (!isAdd && !isSub) continue;
               let seconds = 0;
               const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
@@ -1813,16 +1894,32 @@ app.get("/activity-range", async (req, res) => {
                   spentInRange: 0,
                   commentsInRange: 0,
                   quality: {
-                    hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
-                    hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
-                    labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
-                    hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some((l) => /status/i.test(String(l))) : false,
-                    estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
-                    spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                    hasTitle: Boolean(
+                      issue.title && String(issue.title).trim().length > 0,
+                    ),
+                    hasDescription: Boolean(
+                      issue.description &&
+                        String(issue.description).trim().length > 0,
+                    ),
+                    labelsCount: Array.isArray(issue.labels)
+                      ? issue.labels.length
+                      : 0,
+                    hasStatusLabel: Array.isArray(issue.labels)
+                      ? issue.labels.some((l) => /status/i.test(String(l)))
+                      : false,
+                    estimateIsZero: !(
+                      issue.time_stats &&
+                      Number(issue.time_stats.time_estimate) > 0
+                    ),
+                    spentIsZero: !(
+                      issue.time_stats &&
+                      Number(issue.time_stats.total_time_spent) > 0
+                    ),
                     spentEqualsEstimate: Boolean(
                       issue.time_stats &&
-                      Number(issue.time_stats.time_estimate) > 0 &&
-                      Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)
+                        Number(issue.time_stats.time_estimate) > 0 &&
+                        Number(issue.time_stats.total_time_spent) ===
+                          Number(issue.time_stats.time_estimate),
                     ),
                     descriptionEditsInRange: 0,
                     largeOneOffSpends: [],
@@ -1832,12 +1929,18 @@ app.get("/activity-range", async (req, res) => {
                   issue.labels.forEach((l) => usersMap[authorId].labels.add(l));
                 }
               }
-              usersMap[authorId].issues[issue.iid].spentInRange += isSub ? -seconds : seconds;
+              usersMap[authorId].issues[issue.iid].spentInRange += isSub
+                ? -seconds
+                : seconds;
               // attribute to note date
-              usersMap[authorId].byDate[noteKey] = (usersMap[authorId].byDate[noteKey] || 0) + (isSub ? -seconds : seconds);
+              usersMap[authorId].byDate[noteKey] =
+                (usersMap[authorId].byDate[noteKey] || 0) +
+                (isSub ? -seconds : seconds);
               // Detect "large one-off" spends (>= 1d)
               if (isAdd && seconds >= 8 * 3600) {
-                usersMap[authorId].issues[issue.iid].quality.largeOneOffSpends.push({
+                usersMap[authorId].issues[
+                  issue.iid
+                ].quality.largeOneOffSpends.push({
                   at: note.created_at,
                   seconds,
                 });
@@ -1857,7 +1960,9 @@ app.get("/activity-range", async (req, res) => {
               if (!isInRange(noteKey)) continue;
               const authorId = Number(note.author.id);
               if (!userIds.includes(authorId)) continue;
-              const isAssignee = recipients.some((p) => p && Number(p.id) === authorId);
+              const isAssignee = recipients.some(
+                (p) => p && Number(p.id) === authorId,
+              );
               if (!isAssignee) continue;
 
               if (!usersMap[authorId]) {
@@ -1884,16 +1989,32 @@ app.get("/activity-range", async (req, res) => {
                   spentInRange: 0,
                   commentsInRange: 0,
                   quality: {
-                    hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
-                    hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
-                    labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
-                    hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some((l) => /status/i.test(String(l))) : false,
-                    estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
-                    spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                    hasTitle: Boolean(
+                      issue.title && String(issue.title).trim().length > 0,
+                    ),
+                    hasDescription: Boolean(
+                      issue.description &&
+                        String(issue.description).trim().length > 0,
+                    ),
+                    labelsCount: Array.isArray(issue.labels)
+                      ? issue.labels.length
+                      : 0,
+                    hasStatusLabel: Array.isArray(issue.labels)
+                      ? issue.labels.some((l) => /status/i.test(String(l)))
+                      : false,
+                    estimateIsZero: !(
+                      issue.time_stats &&
+                      Number(issue.time_stats.time_estimate) > 0
+                    ),
+                    spentIsZero: !(
+                      issue.time_stats &&
+                      Number(issue.time_stats.total_time_spent) > 0
+                    ),
                     spentEqualsEstimate: Boolean(
                       issue.time_stats &&
-                      Number(issue.time_stats.time_estimate) > 0 &&
-                      Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)
+                        Number(issue.time_stats.time_estimate) > 0 &&
+                        Number(issue.time_stats.total_time_spent) ===
+                          Number(issue.time_stats.time_estimate),
                     ),
                     descriptionEditsInRange: 0,
                     largeOneOffSpends: [],
@@ -1908,11 +2029,27 @@ app.get("/activity-range", async (req, res) => {
               const lastEditedAt = note.last_edited_at || note.updated_at;
               const editor = note.last_edited_by || note.editor || note.author;
               if (lastEditedAt) {
-                const editKey = new Date(lastEditedAt).toISOString().slice(0, 10);
-                if (isInRange(editKey) && editor && Number(editor.id) === authorId && note.created_at !== lastEditedAt) {
-                  const bodyStr = typeof note.body === "string" ? note.body.toLowerCase() : "";
-                  if (bodyStr.includes("description") || bodyStr.includes("edited") || bodyStr.includes("changed")) {
-                    usersMap[authorId].issues[issue.iid].quality.descriptionEditsInRange += 1;
+                const editKey = new Date(lastEditedAt)
+                  .toISOString()
+                  .slice(0, 10);
+                if (
+                  isInRange(editKey) &&
+                  editor &&
+                  Number(editor.id) === authorId &&
+                  note.created_at !== lastEditedAt
+                ) {
+                  const bodyStr =
+                    typeof note.body === "string"
+                      ? note.body.toLowerCase()
+                      : "";
+                  if (
+                    bodyStr.includes("description") ||
+                    bodyStr.includes("edited") ||
+                    bodyStr.includes("changed")
+                  ) {
+                    usersMap[authorId].issues[
+                      issue.iid
+                    ].quality.descriptionEditsInRange += 1;
                   }
                 }
               }
@@ -2013,7 +2150,10 @@ app.get("/activity-range", async (req, res) => {
       let suspiciousIssueCount = 0; // for reference only
       // Daily hours aggregation from byDate (seconds)
       const dailyKeys = Object.keys(u.byDate || {}).sort();
-      const daily = dailyKeys.map((k) => ({ date: k, spent: u.byDate[k] || 0 }));
+      const daily = dailyKeys.map((k) => ({
+        date: k,
+        spent: u.byDate[k] || 0,
+      }));
       const H = 3600;
       const targetDailyMax = 7.5 * H; // 7h30m
       const minHealthy = 5 * H; // 5h
@@ -2028,20 +2168,24 @@ app.get("/activity-range", async (req, res) => {
         const reasons = [];
         if (q.hasTitle === false) reasons.push("missing_title");
         if (q.hasDescription === false) reasons.push("missing_description");
-        if (q.spentEqualsEstimate === true) reasons.push("spent_equals_estimate");
+        if (q.spentEqualsEstimate === true)
+          reasons.push("spent_equals_estimate");
         if (q.spentIsZero === true) reasons.push("no_spent");
         if (q.estimateIsZero === true) reasons.push("no_estimate");
         if ((q.labelsCount || 0) <= 3) reasons.push("few_labels");
         if (q.hasStatusLabel === false) reasons.push("missing_status_label");
-        if ((q.descriptionEditsInRange || 0) >= 3) reasons.push("many_description_edits");
-        const hasBigOneOff = Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0;
+        if ((q.descriptionEditsInRange || 0) >= 3)
+          reasons.push("many_description_edits");
+        const hasBigOneOff =
+          Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0;
         if (hasBigOneOff) reasons.push("large_one_off_spend");
 
         // Enrich quality with derived values
         const estimate = Number(iss?.time_stats?.time_estimate) || 0;
         const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
         const spentInRange = Number(iss?.spentInRange) || 0;
-        q.spentToEstimateRatio = estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
+        q.spentToEstimateRatio =
+          estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
         q.hasBigOneOffSpend = hasBigOneOff;
         iss.quality = q;
 
@@ -2064,7 +2208,8 @@ app.get("/activity-range", async (req, res) => {
         if (daysAboveTarget > 0) add(Math.min(0.15, 0.015 * daysAboveTarget));
         // bonuses for activity
         if (spentInRange > 0) add(0.08);
-        if ((iss?.commentsInRange || 0) > 0) add(Math.min(0.08, 0.02 * iss.commentsInRange));
+        if ((iss?.commentsInRange || 0) > 0)
+          add(Math.min(0.08, 0.02 * iss.commentsInRange));
         if (estimate > 0 && totalSpent > 0) {
           const ratio = totalSpent / estimate;
           if (ratio >= 0.6 && ratio <= 1.4) add(0.05);
@@ -2078,7 +2223,10 @@ app.get("/activity-range", async (req, res) => {
       }
       u.totalIssueCount = totalIssueCount;
       u.suspiciousIssueCount = suspiciousIssueCount;
-      u.realnessPercent = totalIssueCount > 0 ? Number((realnessSum / totalIssueCount) * 100).toFixed(2) : 100;
+      u.realnessPercent =
+        totalIssueCount > 0
+          ? Number((realnessSum / totalIssueCount) * 100).toFixed(2)
+          : 100;
       // Add human-readable daily metrics and overtime flag
       const toHM = (s) => {
         const sec = Math.round(Number(s) || 0);
@@ -2086,7 +2234,11 @@ app.get("/activity-range", async (req, res) => {
         const m = Math.floor((sec % 3600) / 60);
         return `${h}h ${m}m`;
       };
-      u.dailySummary = daily.map((d) => ({ date: d.date, spent: d.spent, spent_hm: toHM(d.spent) }));
+      u.dailySummary = daily.map((d) => ({
+        date: d.date,
+        spent: d.spent,
+        spent_hm: toHM(d.spent),
+      }));
       u.daysBelowMin = daysBelowMin;
       u.daysAboveTarget = daysAboveTarget;
       u.overtime = daysAboveTarget > 0;

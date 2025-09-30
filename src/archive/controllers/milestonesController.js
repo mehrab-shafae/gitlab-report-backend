@@ -21,11 +21,9 @@ export async function listMilestones(req, res) {
 
     res.json({ milestones, users: activeUsers });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to fetch milestones",
-        error: error?.response?.data || error.message,
-      });
+    res.status(500).json({
+      message: "Failed to fetch milestones",
+      error: error?.response?.data || error.message,
+    });
   }
 }
