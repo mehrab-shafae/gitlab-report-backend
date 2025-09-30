@@ -1744,7 +1744,10 @@ function master1() {
                         // بیش‌کاری سالم
                         if (daysAboveMax > 0) realnessScore += Math.min(0.08, 0.008 * daysAboveMax);
                         // fake spend (بیش از ۹ ساعت)
-                        if (daysFake > 0) realnessScore -= Math.min(0.5, 0.12 * daysFake);
+                        if (daysFake > 0) realnessScore -= Math.min(0.5, 0.15 * daysFake);
+                        // fake spend خیلی زیاد (بیش از ۱۲ ساعت)
+                        const daysExtremeFake = daily.filter(d => d.spent > 12 * H).length;
+                        if (daysExtremeFake > 0) realnessScore -= Math.min(0.6, 0.25 * daysExtremeFake);
                         // large one-off spends
                         if (largeOneOffSpendsCount > 0) realnessScore -= Math.min(0.4, 0.1 * largeOneOffSpendsCount);
                         // محدودیت امتیاز
@@ -1804,26 +1807,31 @@ function master1() {
                             q.spentToEstimateRatio = estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
                             // تعداد کامنت مفید
                             q.commentsInRange = iss.commentsInRange || 0;
-                            // شاخص کیفیت کلی ایشو (qualityScore)
+                            // --- شاخص کیفیت کلی ایشو (qualityScore)
                             let qualityScore = 1.0;
-                            if (q.hasTitle === false) qualityScore -= 0.12;
-                            if (q.hasDescription === false) qualityScore -= 0.12;
-                            if (q.spentEqualsEstimate === true) qualityScore -= 0.18;
-                            if (q.spentIsZero === true) qualityScore -= 0.12;
-                            if (q.estimateIsZero === true) qualityScore -= 0.12;
-                            if ((q.labelsCount || 0) <= 3) qualityScore -= 0.06;
-                            if (q.hasStatusLabel === false) qualityScore -= 0.06;
-                            if ((q.descriptionEditsInRange || 0) >= 3) qualityScore -= 0.12;
-                            if (Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0) qualityScore -= 0.18;
+                            const qualityPenalties = [];
+                            if (q.hasTitle === false) { qualityScore -= 0.18; qualityPenalties.push('missing_title'); }
+                            if (q.hasDescription === false) { qualityScore -= 0.18; qualityPenalties.push('missing_description'); }
+                            if (q.spentEqualsEstimate === true) { qualityScore -= 0.22; qualityPenalties.push('spent_equals_estimate'); }
+                            if (q.spentIsZero === true) { qualityScore -= 0.18; qualityPenalties.push('no_spent'); }
+                            if (q.estimateIsZero === true) { qualityScore -= 0.18; qualityPenalties.push('no_estimate'); }
+                            if ((q.labelsCount || 0) <= 3) { qualityScore -= 0.12; qualityPenalties.push('few_labels'); }
+                            if ((q.labelsCount || 0) <= 1) { qualityScore -= 0.10; qualityPenalties.push('very_few_labels'); }
+                            if (q.hasStatusLabel === false) { qualityScore -= 0.12; qualityPenalties.push('missing_status_label'); }
+                            if ((q.descriptionEditsInRange || 0) >= 3) { qualityScore -= 0.15; qualityPenalties.push('many_description_edits'); }
+                            if (Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0) { qualityScore -= 0.22; qualityPenalties.push('large_one_off_spend'); }
                             // spent توزیع نشده (همه در یک روز)
-                            if (q.spentDistributionDays <= 1 && iss.spentInRange > 2 * 3600) qualityScore -= 0.15;
+                            if (q.spentDistributionDays <= 1 && iss.spentInRange > 2 * 3600) { qualityScore -= 0.18; qualityPenalties.push('undistributed_spend'); }
                             // نسبت spent به estimate خیلی کم یا زیاد
-                            if (q.spentToEstimateRatio && (q.spentToEstimateRatio < 0.5 || q.spentToEstimateRatio > 1.5)) qualityScore -= 0.12;
+                            if (q.spentToEstimateRatio && (q.spentToEstimateRatio < 0.5 || q.spentToEstimateRatio > 1.5)) { qualityScore -= 0.15; qualityPenalties.push('bad_spent_to_estimate_ratio'); }
                             // تعداد کامنت مفید کم
-                            if (q.commentsInRange < 1) qualityScore -= 0.05;
+                            if (q.commentsInRange < 1) { qualityScore -= 0.08; qualityPenalties.push('few_comments'); }
+                            // اگر بیش از ۳ مورد مشکل quality وجود داشته باشد، جریمه اضافی
+                            if (qualityPenalties.length >= 3) qualityScore -= 0.15;
                             // محدودیت امتیاز
                             qualityScore = Math.max(0, Math.min(1, qualityScore));
                             q.qualityScore = Number(qualityScore.toFixed(2));
+                            q.qualityPenalties = qualityPenalties;
                             iss.quality = q;
                         }
 
@@ -1849,13 +1857,29 @@ function master1() {
                         };
                         // --- trend و پیام راهنما برای هر یوزر ---
                         let guidance = [];
-                        // spend غیرعادی
-                        if (u.daysFake > 0) guidance.push('در برخی روزها spend غیرواقعی ثبت شده است. لطفاً spend خود را به صورت واقعی و منظم وارد کنید.');
-                        if (u.daysBelowMin > 0) guidance.push('در برخی روزها کمتر از حداقل ساعات کاری spend ثبت شده است.');
+                        // پیام absence کلی
+                        if (u.absenceCount > 0) {
+                            guidance.push(`در ${u.absenceCount} روز (${u.absenceDays.join(', ')}) هیچ فعالیتی ثبت نشده است.`);
+                        }
+                        // پیام fake spend کلی
+                        if (u.daysFake > 0) {
+                            const fakeDates = u.fakeDaysDetails.filter(f => !f.type).map(f => f.date);
+                            if (fakeDates.length > 0) guidance.push(`در روزهای ${fakeDates.join(', ')} spend غیرواقعی (بیش از ۹ ساعت) ثبت شده است.`);
+                            const extremeFakeDates = u.dailySummary.filter(d => d.spent > 12 * 3600).map(d => d.date);
+                            if (extremeFakeDates.length > 0) guidance.push(`در روزهای ${extremeFakeDates.join(', ')} spend بسیار غیرواقعی (بیش از ۱۲ ساعت) ثبت شده است.`);
+                        }
+                        // پیام spend کمتر از حداقل
+                        const belowMinDates = u.dailySummary.filter(d => d.spent > 0 && d.spent < 8 * 3600).map(d => d.date);
+                        if (belowMinDates.length > 0) guidance.push(`در روزهای ${belowMinDates.join(', ')} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
+                        // پیام large one-off spends
                         if (u.largeOneOffSpendsCount > 0) guidance.push('چند spend بزرگ یکجا ثبت شده که مشکوک به فیک بودن است.');
                         // کیفیت ایشوها
                         if (u.summary.qualityDistribution.weak > 0) guidance.push('برخی ایشوها کیفیت پایینی دارند. لطفاً عنوان، توضیح و برآورد زمانی را کامل‌تر وارد کنید.');
                         if (u.summary.qualityDistribution.good === 0) guidance.push('هیچ ایشوی با کیفیت عالی ثبت نشده است.');
+                        // پیام مثبت absence
+                        if (u.absenceCount === 0) guidance.push('در تمام روزهای کاری این بازه فعالیت ثبت شده است. آفرین!');
+                        // پیام مثبت quality
+                        if (u.summary.qualityDistribution.weak === 0 && u.summary.qualityDistribution.good > 0) guidance.push('تمام ایشوهای شما کیفیت قابل قبولی دارند.');
                         // trend عملکرد (ساده: مقایسه نیمه اول و دوم بازه)
                         let trend = 'stable';
                         if (u.dailySummary && u.dailySummary.length > 4) {
@@ -1884,8 +1908,19 @@ function master1() {
                         u.absenceDays = absenceDays;
                         u.absenceCount = absenceDays.length;
                         if (!u.absencePenalty) u.absencePenalty = 0;
-                        u.absencePenalty = Math.min(0.5, 0.08 * absenceDays.length);
-                        u.realnessPercent = Math.max(0, u.realnessPercent - u.absencePenalty * 100);
+                        // --- absence penalty جدید و نمایی ---
+                        const minWorkingDays = allDates.length;
+                        const minTotalExpected = minWorkingDays * 8 * 3600 * 0.5; // ۵۰٪ حداقل مورد انتظار
+                        const absenceExpPenalty = absenceDays.length > 2 ? Math.min(0.7, 0.08 * Math.pow(absenceDays.length, 1.25)) : 0.08 * absenceDays.length;
+                        let absencePenalty = absenceExpPenalty;
+                        // اگر کل spend کمتر از ۵۰٪ حداقل مورد انتظار باشد، جریمه سنگین
+                        if (u.totalSpent < minTotalExpected) {
+                            absencePenalty += 0.25;
+                            u.summary.guidance.push('کل spend شما در این بازه کمتر از ۵۰٪ حداقل مورد انتظار است.');
+                        }
+                        absencePenalty = Math.min(0.9, absencePenalty);
+                        u.absencePenalty = absencePenalty;
+                        u.realnessPercent = Math.max(0, u.realnessPercent - absencePenalty * 100);
                         if (!u.summary) u.summary = {};
                         if (!u.summary.guidance) u.summary.guidance = [];
                         // --- guidance تاریخ‌دار absence ---
@@ -1980,6 +2015,29 @@ function master1() {
                                     u.summary.guidance.push('بیش از ۶۰٪ spend شما فقط در دو روز ثبت شده است. بهتر است spend را در روزهای بیشتری توزیع کنید.');
                               }
                         }
+                        // --- شاخص‌های جدید ---
+                        // Consistency: درصد روزهایی که spend بین ۷ تا ۹ ساعت است
+                        const consistentDays = u.dailySummary.filter(d => d.spent >= 7 * 3600 && d.spent <= 9 * 3600).length;
+                        const consistencyRatio = u.totalDays > 0 ? consistentDays / u.totalDays : 0;
+                        // Diversity: تعداد ایشوهای مختلف که کاربر spend داشته
+                        const diversityCount = Object.values(u.issues).filter(iss => iss.spentInRange > 0).length;
+                        // Collaboration: تعداد کامنت‌هایی که کاربر روی ایشوهای دیگران گذاشته (نیاز به شمارش جداگانه)
+                        let collaborationCount = 0;
+                        if (u.collaborationNotes) collaborationCount = u.collaborationNotes.length;
+                        // تاثیر در امتیازدهی
+                        let bonus = 0;
+                        if (consistencyRatio > 0.7) bonus += 0.05;
+                        if (diversityCount >= 3) bonus += 0.05;
+                        if (collaborationCount >= 2) bonus += 0.05;
+                        // اضافه به totalScore
+                        u.summary.scores.consistency = Number(consistencyRatio.toFixed(2));
+                        u.summary.scores.diversity = diversityCount;
+                        u.summary.scores.collaboration = collaborationCount;
+                        u.summary.scores.totalScore = Math.min(1, u.summary.scores.totalScore + bonus);
+                        // پیام راهنما
+                        if (consistencyRatio > 0.7) u.summary.guidance.push('ثبات خوبی در ثبت spend روزانه دارید.');
+                        if (diversityCount >= 3) u.summary.guidance.push('روی چند ایشوی مختلف کار کرده‌اید که نشانه تنوع کار است.');
+                        if (collaborationCount >= 2) u.summary.guidance.push('در همکاری تیمی (کامنت روی ایشوهای دیگران) فعال بوده‌اید.');
                   }
 
                   const results = Object.values(usersMap).map(u => ({
