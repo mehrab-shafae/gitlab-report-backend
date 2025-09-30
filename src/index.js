@@ -42,6 +42,13 @@ const adminUser = process.env.adminUser || 'master';
 
 const originsC = ['http://localhost:3000', 'http://localhost:3001', process.env.originsCors];
 
+if (!baseUUrl || !token) {
+      throw new Error('GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است');
+}
+if (!projectId) {
+      throw new Error('projectId مشخص نیست (query یا .env)');
+}
+
 (function main() {
       app.use(
             cors({
@@ -172,15 +179,6 @@ function master1() {
       });
       app.get('/labels', async (req, res) => {
             try {
-                  const projectId = req.query.projectId || projectId;
-
-                  if (!baseUUrl || !token) {
-                        return res.status(500).json({ message: 'GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است' });
-                  }
-                  if (!projectId) {
-                        return res.status(400).json({ message: 'projectId مشخص نیست (query یا .env)' });
-                  }
-
                   let andLabels = [];
                   if (req.query.labels) {
                         if (Array.isArray(req.query.labels)) {
