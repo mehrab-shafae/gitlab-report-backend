@@ -1,6 +1,6 @@
-import express from "express";
-import { listMilestones } from "../controllers/milestonesController.js";
-import { milestonesReport } from "../controllers/reportController.js";
+import express from 'express';
+import { listMilestones } from '../controllers/milestonesController.js';
+import { milestonesReport } from '../controllers/reportController.js';
 
 export const milestonesRouter = express.Router();
 
@@ -29,7 +29,7 @@ export const milestonesRouter = express.Router();
  *       200:
  *         description: List of milestones and users (active only)
  */
-milestonesRouter.get("/", listMilestones);
+milestonesRouter.get('/', listMilestones);
 
 /**
  * @openapi
@@ -55,4 +55,4 @@ milestonesRouter.get("/", listMilestones);
  *       200:
  *         description: Array of report rows per milestone
  */
-milestonesRouter.get("/report", milestonesReport);
+milestonesRouter.get('/report', milestonesReport);
