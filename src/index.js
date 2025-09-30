@@ -38,7 +38,7 @@ const projectId = process.env.GITLAB_PROJECT_ID;
 const groupId = process.env.GITLAB_GROUP_ID;
 const port = process.env.PORT || 3000;
 const perPage = 100; //, 50, 100
-const adminUser = process.env.adminUser || 'master';
+const adminUser = process.env.adminUser || "master";
 
 const originsC = [
   "http://localhost:3000",
@@ -109,10 +109,10 @@ function masterOAuth() {
 
       let created;
 
-      if(username === adminUser){
-        created = await User.create({ username, password, isAdmin: true })
-      }else{
-        created = await User.create({ username, password })
+      if (username === adminUser) {
+        created = await User.create({ username, password, isAdmin: true });
+      } else {
+        created = await User.create({ username, password });
       }
 
       return res.status(201).json({ status: "ok", id: created._id });
@@ -128,13 +128,16 @@ function masterOAuth() {
 function master1() {
   app.get("/milestones", async (req, res) => {
     try {
-      const response = await fetch(`${baseUUrl}/projects/${projectId}/milestones`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "PRIVATE-TOKEN": token,
+      const response = await fetch(
+        `${baseUUrl}/projects/${projectId}/milestones`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "PRIVATE-TOKEN": token,
+          },
         },
-      });
+      );
 
       if (!response.ok) {
         return res.json({
