@@ -6,7 +6,6 @@ import cors from "cors";
 dotenv.config();
 const app = express();
 
-
 app.use(
   cors({
     origin: [
@@ -18,16 +17,13 @@ app.use(
   }),
 );
 
-
 app.use(express.json());
-
 
 const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017";
 mongoose
   .connect(mongoUri, { dbName: process.env.MONGODB_DB || "forvest_git" })
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.error("MongoDB connection error:", err.message));
-
 
 const userSchema = new mongoose.Schema(
   {
@@ -115,7 +111,6 @@ app.get("/labels", async (req, res) => {
         .json({ message: "projectId مشخص نیست (query یا .env)" });
     }
 
-    
     let andLabels = [];
     if (req.query.labels) {
       if (Array.isArray(req.query.labels)) {
@@ -160,7 +155,6 @@ app.get("/labels", async (req, res) => {
       const chunk = await r.json();
       allLabels.push(...chunk);
 
-      
       const nextPageHeader = r.headers.get("x-next-page");
       const perPage = Number(params.get("per_page")) || 100;
       if (!nextPageHeader || nextPageHeader === "0" || chunk.length < perPage)
@@ -169,9 +163,7 @@ app.get("/labels", async (req, res) => {
       page = parseInt(nextPageHeader, 10) || page + 1;
     }
 
-    
     if (andLabels.length > 0) {
-      
       let issues = [];
       let issuePage = 1;
       const perPage = 100;
@@ -196,18 +188,18 @@ app.get("/labels", async (req, res) => {
         if (issuesChunk.length < perPage) break;
         issuePage++;
       }
-      
+
       const labelSet = new Set();
       for (const issue of issues) {
         if (!Array.isArray(issue.labels)) continue;
-        
+
         if (andLabels.every((l) => issue.labels.includes(l))) {
           for (const l of issue.labels) {
             labelSet.add(l);
           }
         }
       }
-      
+
       const filteredLabels = allLabels.filter((lbl) => labelSet.has(lbl.name));
       return res.json({ status: "success", data: filteredLabels });
     }
@@ -223,20 +215,16 @@ app.get("/labels", async (req, res) => {
 
 const ALL_PROJECT_IDS = [];
 
-
 const projectNameCache = {};
-
 
 function extractProjectFromLabels(labels) {
   if (!labels || !Array.isArray(labels)) {
     return "Unknown Project";
   }
 
-  
   const projectLabel = labels.find((label) => label.startsWith("Project:"));
 
   if (projectLabel) {
-    
     const projectName = projectLabel.replace("Project:", "").trim();
     console.log(`پروژه پیدا شد: ${projectName} از لیبل: ${projectLabel}`);
     return projectName;
@@ -246,9 +234,7 @@ function extractProjectFromLabels(labels) {
   return "Unknown Project";
 }
 
-
 async function getProjectName(baseUUrl, projectId) {
-  
   if (projectNameCache[projectId]) {
     return projectNameCache[projectId];
   }
@@ -264,7 +250,7 @@ async function getProjectName(baseUUrl, projectId) {
   if (!response.ok) {
     const fallbackName = `Project ${projectId}`;
     projectNameCache[projectId] = fallbackName;
-    return fallbackName; 
+    return fallbackName;
   }
 
   const data = await response.json();
@@ -272,7 +258,6 @@ async function getProjectName(baseUUrl, projectId) {
   projectNameCache[projectId] = projectName;
   return projectName;
 }
-
 
 async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
   let allIssues = [];
@@ -301,13 +286,12 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
     const issues = await response.json();
 
     if (issues.length === 0) {
-      break; 
+      break;
     }
 
     allIssues = allIssues.concat(issues);
     page++;
 
-    
     if (issues.length < perPage) {
       break;
     }
@@ -315,7 +299,6 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
 
   return allIssues;
 }
-
 
 async function getAllProjectIdsFromGroup(baseUUrl) {
   const groupId = process.env.GITLAB_GROUP_ID;
@@ -347,7 +330,6 @@ async function getAllProjectIdsFromGroup(baseUUrl) {
   return ids;
 }
 
-
 async function resolveProjectIds(baseUUrl, projectIdParam) {
   if (projectIdParam === "all") {
     const dynamicIds = await getAllProjectIdsFromGroup(baseUUrl);
@@ -360,7 +342,6 @@ async function resolveProjectIds(baseUUrl, projectIdParam) {
   }
   return [projectIdParam];
 }
-
 
 function getProjectDisplayNameFromLabel(projectLabel) {
   if (typeof projectLabel !== "string") return String(projectLabel || "");
@@ -382,7 +363,6 @@ app.get("/time-spends", async (req, res) => {
         .json({ message: "milestone و projectId الزامی هستند" });
     }
 
-    
     const perPage = 100;
     let page = 1;
     let issues = [];
@@ -410,9 +390,7 @@ app.get("/time-spends", async (req, res) => {
     }
     let usersIssues = [];
 
-    
     if (userId && userId !== "all") {
-      
       const userIssues = issues.filter((issue) => {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
         const inAssignees = assignees.some((a) => a && a.id == userId);
@@ -420,7 +398,6 @@ app.get("/time-spends", async (req, res) => {
         return inAssignees || legacy;
       });
 
-      
       let totalSpent = 0;
       let totalEstimate = 0;
 
@@ -464,15 +441,13 @@ app.get("/time-spends", async (req, res) => {
           totalSpent > 0
             ? ((proj.totalSpent / totalSpent) * 100).toFixed(2)
             : 0;
-        
+
         proj.performance =
           numWorkingDays && numWorkingDays > 0
             ? ((proj.totalSpent / (numWorkingDays * 8 * 3600)) * 100).toFixed(2)
             : 0;
       });
 
-      
-      
       let userInfo = {};
       for (const issue of userIssues) {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
@@ -495,9 +470,7 @@ app.get("/time-spends", async (req, res) => {
         totalEstimate,
         projects: Object.values(projectsMap),
       });
-    }
-    
-    else {
+    } else {
       const usersMap = {};
 
       for (const issue of issues) {
@@ -554,7 +527,6 @@ app.get("/time-spends", async (req, res) => {
         }
       }
 
-      
       Object.values(usersMap).forEach((user) => {
         Object.values(user.projects).forEach((proj) => {
           const toHM = (sec) => {
@@ -573,7 +545,7 @@ app.get("/time-spends", async (req, res) => {
             user.totalSpent > 0
               ? ((proj.totalSpent / user.totalSpent) * 100).toFixed(2)
               : 0;
-          
+
           proj.performance =
             numWorkingDays && numWorkingDays > 0
               ? ((proj.totalSpent / (numWorkingDays * 8 * 3600)) * 100).toFixed(
@@ -596,7 +568,6 @@ app.get("/time-spends", async (req, res) => {
   }
 });
 
-
 app.get("/milestone-daily-spends", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
@@ -606,19 +577,18 @@ app.get("/milestone-daily-spends", async (req, res) => {
       return res.status(400).json({ message: "milestone الزامی است" });
     }
 
-    
     const parseSpentFromNote = (body) => {
       if (typeof body !== "string") return { seconds: 0, forDate: null };
       const lowered = body.toLowerCase();
-      
+
       const del = lowered.match(
         /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
       );
       const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
       const H = 3600;
-      const D = 8 * H; 
-      const W = 5 * D; 
-      const MO = 4 * W; 
+      const D = 8 * H;
+      const W = 5 * D;
+      const MO = 4 * W;
       if (del) {
         const duration = del[1];
         const forDate = del[2];
@@ -665,7 +635,6 @@ app.get("/milestone-daily-spends", async (req, res) => {
       return res.status(400).json({ message: e?.message || String(e) });
     }
 
-    
     const usersMap = {};
 
     for (const pid of projectIds) {
@@ -675,7 +644,6 @@ app.get("/milestone-daily-spends", async (req, res) => {
         const issueIid = issue.iid;
         if (!issueIid) continue;
 
-        
         const notesResp = await fetch(
           `${baseUUrl}/projects/${pid}/issues/${issueIid}/notes?system=true&per_page=100`,
           {
@@ -696,7 +664,6 @@ app.get("/milestone-daily-spends", async (req, res) => {
           );
           if (deltaSeconds === 0) continue;
 
-          
           const dateKey =
             forDate || new Date(note.created_at).toISOString().slice(0, 10);
           const author = note.author;
@@ -717,20 +684,18 @@ app.get("/milestone-daily-spends", async (req, res) => {
       }
     }
 
-    
     const monthMatch = String(milestone).match(/(\d{4})-(\d{2})/);
     const targetYear = monthMatch
       ? parseInt(monthMatch[1], 10)
       : new Date().getUTCFullYear();
     const targetMonthNum = monthMatch
       ? parseInt(monthMatch[2], 10)
-      : new Date().getUTCMonth() + 1; 
-    const monthIndex = targetMonthNum - 1; 
+      : new Date().getUTCMonth() + 1;
+    const monthIndex = targetMonthNum - 1;
     const daysInMonth = new Date(
       Date.UTC(targetYear, monthIndex + 1, 0),
     ).getUTCDate();
 
-    
     const monthDates = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(Date.UTC(targetYear, monthIndex, day))
@@ -739,7 +704,6 @@ app.get("/milestone-daily-spends", async (req, res) => {
       monthDates.push(d);
     }
 
-    
     const results = Object.values(usersMap).map((u) => ({
       userId: u.userId,
       username: u.username,
@@ -776,18 +740,17 @@ app.get("/labels-report", async (req, res) => {
 
     let allIssues = [];
 
-    
     for (const pid of projectIds) {
       const perPage = 100;
       let page = 1;
       while (true) {
         const params = new URLSearchParams();
         if (milestone) params.append("milestone", milestone);
-        
+
         let desiredState = (req.query.state || "opened")
           .toString()
           .toLowerCase();
-        if (desiredState === "open") desiredState = "opened"; 
+        if (desiredState === "open") desiredState = "opened";
         if (!["opened", "closed", "all"].includes(desiredState))
           desiredState = "opened";
         params.set("state", desiredState);
@@ -819,7 +782,6 @@ app.get("/labels-report", async (req, res) => {
       }
     }
 
-    
     if (userId && userId !== "all") {
       allIssues = allIssues.filter((issue) => {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
@@ -829,14 +791,12 @@ app.get("/labels-report", async (req, res) => {
       });
     }
 
-    
     const filteredIssues = allIssues.filter(
       (issue) =>
         Array.isArray(issue.labels) &&
         labelList.every((lbl) => issue.labels.includes(lbl)),
     );
 
-    
     const totalSpent = filteredIssues.reduce(
       (sum, issue) => sum + (issue.time_stats?.total_time_spent || 0),
       0,
@@ -900,16 +860,13 @@ app.get("/labels-report", async (req, res) => {
   }
 });
 
-
 app.get("/daily-report", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
     const { projectId = "all", date } = req.query;
 
-    
     const targetDate = date || new Date().toISOString().slice(0, 10);
 
-    
     let projectIds = [];
     try {
       projectIds = await resolveProjectIds(baseUUrl, projectId);
@@ -917,7 +874,6 @@ app.get("/daily-report", async (req, res) => {
       return res.status(400).json({ message: e?.message || String(e) });
     }
 
-    
     const parseSpentFromNote = (body) => {
       if (typeof body !== "string") return { seconds: 0, forDate: null };
       const lowered = body.toLowerCase();
@@ -926,7 +882,7 @@ app.get("/daily-report", async (req, res) => {
       const D = 8 * H;
       const W = 5 * D;
       const MO = 4 * W;
-      
+
       const del = lowered.match(
         /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
       );
@@ -968,18 +924,15 @@ app.get("/daily-report", async (req, res) => {
       return { seconds: isSub ? -seconds : seconds, forDate: null };
     };
 
-    
     const usersMap = {};
 
     for (const pid of projectIds) {
-      
       const issues = await getAllIssuesFromProject(baseUUrl, pid, "");
 
       for (const issue of issues) {
         const issueIid = issue.iid;
         if (!issueIid) continue;
 
-        
         const notesResp = await fetch(
           `${baseUUrl}/projects/${pid}/issues/${issueIid}/notes?system=true&per_page=100`,
           {
@@ -994,7 +947,6 @@ app.get("/daily-report", async (req, res) => {
         const notes = await notesResp.json();
 
         for (const note of notes) {
-          
           const createdAt = note.created_at;
           if (!createdAt || !note.body) continue;
           const noteDate = new Date(createdAt).toISOString().slice(0, 10);
@@ -1003,7 +955,7 @@ app.get("/daily-report", async (req, res) => {
             note.body,
           );
           if (deltaSeconds === 0) continue;
-          
+
           const targetKey = forDate || noteDate;
           if (targetKey !== targetDate) continue;
 
@@ -1041,7 +993,6 @@ app.get("/daily-report", async (req, res) => {
     });
   }
 });
-
 
 app.post("/login", async (req, res) => {
   try {
@@ -1099,9 +1050,9 @@ app.get("/daily", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
     const projectId = process.env.GITLAB_PROJECT_ID;
-    
-    const targetDate = new Date().toISOString().slice(0, 10); 
-    
+
+    const targetDate = new Date().toISOString().slice(0, 10);
+
     let allIssues = [];
     let page = 1;
     const perPage = 100;
@@ -1110,7 +1061,7 @@ app.get("/daily", async (req, res) => {
       params.set("per_page", String(perPage));
       params.set("page", String(page));
 
-      params.set("state", "opened"); 
+      params.set("state", "opened");
 
       const url = `${baseUUrl}/projects/${projectId}/issues?${params.toString()}`;
       const resp = await fetch(url, {
@@ -1128,10 +1079,9 @@ app.get("/daily", async (req, res) => {
       page++;
     }
     console.log("Fetched issues:", allIssues.length);
-    
 
     const usersMap = {};
-    const limit = 5; 
+    const limit = 5;
     function chunkArray(arr, size) {
       const out = [];
       for (let i = 0; i < arr.length; i += size) {
@@ -1144,14 +1094,13 @@ app.get("/daily", async (req, res) => {
       await Promise.all(
         chunk.map(async (issue) => {
           if (!issue.iid) return;
-          
+
           const assignees = Array.isArray(issue.assignees)
             ? issue.assignees
             : [];
           const legacy = issue.assignee ? [issue.assignee] : [];
           const recipients = assignees.length > 0 ? assignees : legacy;
 
-          
           const notesResp = await fetch(
             `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
             {
@@ -1167,7 +1116,6 @@ app.get("/daily", async (req, res) => {
             systemNotes = await notesResp.json();
           }
 
-          
           let hasAnyEventForIssueToday = false;
           const eventsResp = await fetch(
             `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/resource_time_tracking_events?per_page=100`,
@@ -1190,7 +1138,7 @@ app.get("/daily", async (req, res) => {
               if (!uid) continue;
               const isAssignee = recipients.some((p) => p && p.id === uid);
               if (!isAssignee) continue;
-              const delta = Number(ev.time_spent) || 0; 
+              const delta = Number(ev.time_spent) || 0;
               if (delta === 0) continue;
               hasAnyEventForIssueToday = true;
 
@@ -1234,7 +1182,6 @@ app.get("/daily", async (req, res) => {
             }
           }
 
-          
           if (Array.isArray(systemNotes) && systemNotes.length > 0) {
             for (const note of systemNotes) {
               if (!note?.body || !note?.created_at || !note?.author?.id)
@@ -1242,7 +1189,7 @@ app.get("/daily", async (req, res) => {
               const createdKey = new Date(note.created_at)
                 .toISOString()
                 .slice(0, 10);
-              if (createdKey !== targetDate) continue; 
+              if (createdKey !== targetDate) continue;
               const uid = note.author.id;
               const isAssignee = recipients.some((p) => p && p.id === uid);
               if (!isAssignee) continue;
@@ -1254,7 +1201,7 @@ app.get("/daily", async (req, res) => {
               if (!m1) continue;
               const duration = m1[1];
               const fromDate = m1[2];
-              if (fromDate !== targetDate) continue; 
+              if (fromDate !== targetDate) continue;
 
               let seconds = 0;
               const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
@@ -1264,9 +1211,9 @@ app.get("/daily", async (req, res) => {
                 const unit = mm[2].toLowerCase();
                 if (Number.isNaN(val)) continue;
                 const H = 3600;
-                const D = 8 * H; 
-                const W = 5 * D; 
-                const MO = 4 * W; 
+                const D = 8 * H;
+                const W = 5 * D;
+                const MO = 4 * W;
                 if (unit === "mo") seconds += val * MO;
                 else if (unit === "w") seconds += val * W;
                 else if (unit === "d") seconds += val * D;
@@ -1275,7 +1222,7 @@ app.get("/daily", async (req, res) => {
                 else if (unit === "s") seconds += val;
               }
               if (seconds === 0) continue;
-              const delta = -seconds; 
+              const delta = -seconds;
 
               if (!usersMap[uid]) {
                 usersMap[uid] = {
@@ -1317,7 +1264,6 @@ app.get("/daily", async (req, res) => {
             }
           }
 
-          
           if (
             !hasAnyEventForIssueToday &&
             Array.isArray(systemNotes) &&
@@ -1344,9 +1290,9 @@ app.get("/daily", async (req, res) => {
                 const unit = m[2].toLowerCase();
                 if (Number.isNaN(val)) continue;
                 const H = 3600;
-                const D = 8 * H; 
-                const W = 5 * D; 
-                const MO = 4 * W; 
+                const D = 8 * H;
+                const W = 5 * D;
+                const MO = 4 * W;
                 if (unit === "mo") seconds += val * MO;
                 else if (unit === "w") seconds += val * W;
                 else if (unit === "d") seconds += val * D;
@@ -1401,7 +1347,6 @@ app.get("/daily", async (req, res) => {
             }
           }
 
-          
           const commentsResp = await fetch(
             `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?per_page=100`,
             {
@@ -1415,7 +1360,6 @@ app.get("/daily", async (req, res) => {
           if (commentsResp.ok) {
             const comments = await commentsResp.json();
             for (const note of comments) {
-              
               if (note?.system) continue;
               if (!note?.created_at || !note?.author?.id) continue;
               const noteDate = new Date(note.created_at)
@@ -1483,7 +1427,7 @@ app.get("/daily", async (req, res) => {
         }),
       );
     }
-    
+
     for (const issue of allIssues) {
       const updatedDate = issue.updated_at
         ? new Date(issue.updated_at).toISOString().slice(0, 10)
@@ -1506,7 +1450,7 @@ app.get("/daily", async (req, res) => {
             labels: new Set(),
           };
         }
-        
+
         if (!usersMap[uid].issues[issue.iid]) {
           usersMap[uid].issues[issue.iid] = {
             iid: issue.iid,
@@ -1527,7 +1471,7 @@ app.get("/daily", async (req, res) => {
       }
     }
     console.log("Notes and updated issues processed");
-    
+
     const results = Object.values(usersMap).map((u) => ({
       userId: u.userId,
       username: u.username,
@@ -1545,7 +1489,6 @@ app.get("/daily", async (req, res) => {
     });
   }
 });
-
 
 app.get("/activity-range", async (req, res) => {
   try {
@@ -1576,7 +1519,6 @@ app.get("/activity-range", async (req, res) => {
         .json({ message: "حداقل یک userId معتبر لازم است" });
     }
 
-    
     const fromDate = new Date(from);
     const toDate = new Date(to);
     if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
@@ -1589,7 +1531,6 @@ app.get("/activity-range", async (req, res) => {
     const endKey = toKey(toDate);
     const isInRange = (isoDate) => isoDate >= startKey && isoDate <= endKey;
 
-    
     let allIssues = [];
     const perPage = 100;
     {
@@ -1646,7 +1587,6 @@ app.get("/activity-range", async (req, res) => {
         );
         for (const arr of pageResults) allIssues.push(...arr);
       } else {
-        
         let page = 2;
         while (true) {
           const params2 = new URLSearchParams();
@@ -1695,13 +1635,11 @@ app.get("/activity-range", async (req, res) => {
           const legacy = issue.assignee ? [issue.assignee] : [];
           const recipients = assignees.length > 0 ? assignees : legacy;
 
-          
           const targetAssignees = recipients.filter(
             (p) => p && userIds.includes(Number(p.id)),
           );
-          if (targetAssignees.length === 0) return; 
+          if (targetAssignees.length === 0) return;
 
-          
           const [sysNotesResp, notesResp] = await Promise.all([
             fetch(
               `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
@@ -1727,7 +1665,6 @@ app.get("/activity-range", async (req, res) => {
             ),
           ]);
 
-          
           if (sysNotesResp.ok) {
             const notes = await sysNotesResp.json();
             for (const note of notes) {
@@ -1743,22 +1680,22 @@ app.get("/activity-range", async (req, res) => {
               );
               if (!isAssignee) continue;
               const body = String(note.body).toLowerCase();
-              
+
               const delMatch = body.match(
                 /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
               );
               if (delMatch) {
                 const duration = delMatch[1];
                 const fromDateKey = delMatch[2];
-                
+
                 if (!isInRange(fromDateKey)) continue;
                 let seconds = 0;
                 const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
                 let m;
                 const H = 3600;
-                const D = 8 * H; 
-                const W = 5 * D; 
-                const MO = 4 * W; 
+                const D = 8 * H;
+                const W = 5 * D;
+                const MO = 4 * W;
                 while ((m = unitRe2.exec(duration)) !== null) {
                   const val = parseInt(m[1], 10);
                   const unit = m[2].toLowerCase();
@@ -1784,7 +1721,7 @@ app.get("/activity-range", async (req, res) => {
                     byDate: {},
                   };
                 }
-                
+
                 usersMap[authorId].totalSpent -= seconds;
                 if (!usersMap[authorId].issues[issue.iid]) {
                   usersMap[authorId].issues[issue.iid] = {
@@ -1836,13 +1773,12 @@ app.get("/activity-range", async (req, res) => {
                   }
                 }
                 usersMap[authorId].issues[issue.iid].spentInRange -= seconds;
-                
+
                 usersMap[authorId].byDate[fromDateKey] =
                   (usersMap[authorId].byDate[fromDateKey] || 0) - seconds;
                 continue;
               }
 
-              
               if (!isInRange(noteKey)) continue;
               const isAdd =
                 body.includes("added") && body.includes("time spent");
@@ -1853,9 +1789,9 @@ app.get("/activity-range", async (req, res) => {
               const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
               let mm;
               const H = 3600;
-              const D = 8 * H; 
-              const W = 5 * D; 
-              const MO = 4 * W; 
+              const D = 8 * H;
+              const W = 5 * D;
+              const MO = 4 * W;
               while ((mm = unitRe.exec(body)) !== null) {
                 const val = parseInt(mm[1], 10);
                 const unit = mm[2].toLowerCase();
@@ -1932,11 +1868,11 @@ app.get("/activity-range", async (req, res) => {
               usersMap[authorId].issues[issue.iid].spentInRange += isSub
                 ? -seconds
                 : seconds;
-              
+
               usersMap[authorId].byDate[noteKey] =
                 (usersMap[authorId].byDate[noteKey] || 0) +
                 (isSub ? -seconds : seconds);
-              
+
               if (isAdd && seconds >= 8 * 3600) {
                 usersMap[authorId].issues[
                   issue.iid
@@ -1948,11 +1884,10 @@ app.get("/activity-range", async (req, res) => {
             }
           }
 
-          
           if (notesResp.ok) {
             const notes = await notesResp.json();
             for (const note of notes) {
-              if (note?.system) continue; 
+              if (note?.system) continue;
               if (!note?.created_at || !note?.author?.id) continue;
               const noteKey = new Date(note.created_at)
                 .toISOString()
@@ -2025,7 +1960,7 @@ app.get("/activity-range", async (req, res) => {
                 }
               }
               usersMap[authorId].issues[issue.iid].commentsInRange += 1;
-              
+
               const lastEditedAt = note.last_edited_at || note.updated_at;
               const editor = note.last_edited_by || note.editor || note.author;
               if (lastEditedAt) {
@@ -2059,7 +1994,6 @@ app.get("/activity-range", async (req, res) => {
       );
     }
 
-    
     for (const issue of allIssues) {
       const updatedKey = issue.updated_at
         ? new Date(issue.updated_at).toISOString().slice(0, 10)
@@ -2101,7 +2035,6 @@ app.get("/activity-range", async (req, res) => {
       }
     }
 
-    
     for (const issue of allIssues) {
       const createdKey = issue.created_at
         ? new Date(issue.created_at).toISOString().slice(0, 10)
@@ -2143,20 +2076,19 @@ app.get("/activity-range", async (req, res) => {
       }
     }
 
-    
     for (const u of Object.values(usersMap)) {
       let totalIssueCount = 0;
-      let realnessSum = 0; 
-      let suspiciousIssueCount = 0; 
-      
+      let realnessSum = 0;
+      let suspiciousIssueCount = 0;
+
       const dailyKeys = Object.keys(u.byDate || {}).sort();
       const daily = dailyKeys.map((k) => ({
         date: k,
         spent: u.byDate[k] || 0,
       }));
       const H = 3600;
-      const targetDailyMax = 7.5 * H; 
-      const minHealthy = 5 * H; 
+      const targetDailyMax = 7.5 * H;
+      const minHealthy = 5 * H;
       let daysBelowMin = 0;
       let daysAboveTarget = 0;
       for (const d of daily) {
@@ -2180,7 +2112,6 @@ app.get("/activity-range", async (req, res) => {
           Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0;
         if (hasBigOneOff) reasons.push("large_one_off_spend");
 
-        
         const estimate = Number(iss?.time_stats?.time_estimate) || 0;
         const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
         const spentInRange = Number(iss?.spentInRange) || 0;
@@ -2189,11 +2120,10 @@ app.get("/activity-range", async (req, res) => {
         q.hasBigOneOffSpend = hasBigOneOff;
         iss.quality = q;
 
-        
         let score = 1.0;
         const subtract = (v) => (score = Math.max(0, score - v));
         const add = (v) => (score = Math.min(1, score + v));
-        
+
         if (q.hasTitle === false) subtract(0.12);
         if (q.hasDescription === false) subtract(0.12);
         if (q.spentEqualsEstimate === true) subtract(0.18);
@@ -2203,10 +2133,10 @@ app.get("/activity-range", async (req, res) => {
         if (q.hasStatusLabel === false) subtract(0.06);
         if ((q.descriptionEditsInRange || 0) >= 3) subtract(0.12);
         if (hasBigOneOff) subtract(0.18);
-        
+
         if (daysBelowMin > 0) subtract(Math.min(0.2, 0.02 * daysBelowMin));
         if (daysAboveTarget > 0) add(Math.min(0.15, 0.015 * daysAboveTarget));
-        
+
         if (spentInRange > 0) add(0.08);
         if ((iss?.commentsInRange || 0) > 0)
           add(Math.min(0.08, 0.02 * iss.commentsInRange));
@@ -2227,7 +2157,7 @@ app.get("/activity-range", async (req, res) => {
         totalIssueCount > 0
           ? Number((realnessSum / totalIssueCount) * 100).toFixed(2)
           : 100;
-      
+
       const toHM = (s) => {
         const sec = Math.round(Number(s) || 0);
         const h = Math.floor(sec / 3600);
