@@ -15,6 +15,7 @@
     "dayjs": "^1.11.13",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.18.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"

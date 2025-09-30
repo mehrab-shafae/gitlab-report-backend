@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import cors from 'cors';
 
@@ -39,6 +40,7 @@ const groupId = process.env.GITLAB_GROUP_ID;
 const port = process.env.PORT || 3000;
 const perPage = 100; //, 50, 100
 const adminUser = process.env.adminUser || 'master';
+const JWT_SECRET = process.env.JWT_SECRET || 'fdffdsasd4343';
 
 const originsC = ['http://localhost:3000', 'http://localhost:3001', process.env.originsCors];
 
@@ -83,7 +85,14 @@ function masterOAuth() {
                         });
                   }
 
-                  return res.json({ status: 'ok', message: 'ورود موفق بود', user });
+                  const payload = {
+                        sub: String(user._id),
+                        username: user.username,
+                        isAdmin: Boolean(user.isAdmin) && user.username === adminUser,
+                  };
+                  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+
+                  return res.json({ status: 'ok', message: 'ورود موفق بود', accessToken, user: payload });
             } catch (error) {
                   return res.status(500).json({
                         message: 'خطا در بررسی ورود',
@@ -123,6 +132,90 @@ function masterOAuth() {
 }
 
 function master1() {
+      // --- Auth & Access middleware for master1 routes ---
+      async function fetchGitlabUsers() {
+            const response = await fetch(`${baseUUrl}/users`, {
+                  method: 'GET',
+                  headers: {
+                        'Content-Type': 'application/json',
+                        'PRIVATE-TOKEN': token,
+                  },
+            });
+            if (!response.ok) {
+                  throw new Error('Failed to fetch GitLab users');
+            }
+            const data = await response.json();
+            return Array.isArray(data) ? data : [];
+      }
+
+      app.use(async (req, res, next) => {
+            try {
+                  const authHeader = req.headers['authorization'] || '';
+                  const tokenStr = authHeader.startsWith('Bearer ')
+                        ? authHeader.slice(7)
+                        : (req.headers['x-access-token'] || '').toString();
+
+                  if (!tokenStr) {
+                        return res.status(401).json({ message: 'توکن ارائه نشده است' });
+                  }
+
+                  let claims;
+                  try {
+                        claims = jwt.verify(tokenStr, JWT_SECRET);
+                  } catch (e) {
+                        return res.status(401).json({ message: 'توکن نامعتبر است' });
+                  }
+
+                  const isAdmin = Boolean(claims?.isAdmin) && claims?.username === adminUser;
+
+                  if (!isAdmin) {
+                        if (!claims?.username) {
+                              return res.status(403).json({ message: 'کاربر در توکن مشخص نیست' });
+                        }
+
+                        let users;
+                        try {
+                              users = await fetchGitlabUsers();
+                        } catch (err) {
+                              return res.status(502).json({ message: 'خطا در دریافت کاربران GitLab' });
+                        }
+
+                        const matched = users.find(u => String(u?.username).toLowerCase() === String(claims.username).toLowerCase());
+                        if (!matched) {
+                              return res.status(403).json({ message: 'یوزر اشتباه است یا در GitLab یافت نشد' });
+                        }
+
+                        // Enforce self-access by userId in query for enforced routes
+                        const selfId = String(matched.id);
+
+                        // Reject attempts to impersonate via query/params/body
+                        const qUserId = req.query?.userId ? String(req.query.userId) : undefined;
+                        const pId = req.params?.id ? String(req.params.id) : undefined;
+                        const bUserId = req.body?.userId ? String(req.body.userId) : undefined;
+
+                        if ((qUserId && qUserId !== selfId) || (pId && pId !== selfId) || (bUserId && bUserId !== selfId)) {
+                              return res.status(403).json({ message: 'به داده‌های سایر کاربران دسترسی ندارید' });
+                        }
+
+                        // Auto-scope if userId not present
+                        if (!qUserId) {
+                              req.query.userId = selfId;
+                        }
+                        if (req.body && !bUserId) {
+                              req.body.userId = selfId;
+                        }
+
+                        req.auth = { isAdmin: false, username: claims.username, gitlabUserId: matched.id };
+                  } else {
+                        req.auth = { isAdmin: true, username: claims.username };
+                  }
+
+                  return next();
+            } catch (err) {
+                  return res.status(500).json({ message: 'خطای داخلی در احراز هویت', error: err?.message || String(err) });
+            }
+      });
+
       app.get('/milestones', async (req, res) => {
             try {
                   const response = await fetch(`${baseUUrl}/projects/${projectId}/milestones`, {
