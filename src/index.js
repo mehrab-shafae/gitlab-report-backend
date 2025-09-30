@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true },
-    isAdmin: { type: Boolean },
+    isAdmin: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -38,6 +38,7 @@ const projectId = process.env.GITLAB_PROJECT_ID;
 const groupId = process.env.GITLAB_GROUP_ID;
 const port = process.env.PORT || 3000;
 const perPage = 100; //, 50, 100
+const adminUser = process.env.adminUser || 'master';
 
 const originsC = [
   "http://localhost:3000",
@@ -106,7 +107,14 @@ function masterOAuth() {
           .json({ message: "این نام کاربری قبلاً ثبت شده است" });
       }
 
-      const created = await User.create({ username, password });
+      let created;
+
+      if(username === adminUser){
+        created = await User.create({ username, password, isAdmin: true })
+      }else{
+        created = await User.create({ username, password })
+      }
+
       return res.status(201).json({ status: "ok", id: created._id });
     } catch (error) {
       return res.status(500).json({
