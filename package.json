@@ -4,6 +4,7 @@
   "description": "Backend API for GitLab Milestones reporting",
   "main": "src/index.js",
   "type": "module",
+  "author": "MRB & Abolfzl",
   "scripts": {
     "start": "node .",
     "pretty": "prettier --write \"**/*.{js,json,html,ts}\""

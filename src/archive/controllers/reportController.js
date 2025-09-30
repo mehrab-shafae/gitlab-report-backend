@@ -51,7 +51,6 @@ export async function milestonesReport(req, res) {
         updated_before: days ? nowIso : undefined,
       });
 
-      // فیلتر بر اساس userId اگر مشخص شده باشد
       let filteredIssues = issues;
       if (userId) {
         filteredIssues = issues.filter((issue) => {

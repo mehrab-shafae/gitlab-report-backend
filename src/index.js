@@ -6,7 +6,7 @@ import cors from "cors";
 dotenv.config();
 const app = express();
 
-//cors
+
 app.use(
   cors({
     origin: [
@@ -18,17 +18,17 @@ app.use(
   }),
 );
 
-// Parse JSON bodies
+
 app.use(express.json());
 
-// MongoDB connection
+
 const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017";
 mongoose
   .connect(mongoUri, { dbName: process.env.MONGODB_DB || "forvest_git" })
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.error("MongoDB connection error:", err.message));
 
-// User schema/model
+
 const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, unique: true, trim: true },
@@ -115,7 +115,7 @@ app.get("/labels", async (req, res) => {
         .json({ message: "projectId مشخص نیست (query یا .env)" });
     }
 
-    // دریافت لیبل‌های ورودی برای AND search
+    
     let andLabels = [];
     if (req.query.labels) {
       if (Array.isArray(req.query.labels)) {
@@ -160,7 +160,7 @@ app.get("/labels", async (req, res) => {
       const chunk = await r.json();
       allLabels.push(...chunk);
 
-      // pagination via X-Next-Page, fallback to chunk length
+      
       const nextPageHeader = r.headers.get("x-next-page");
       const perPage = Number(params.get("per_page")) || 100;
       if (!nextPageHeader || nextPageHeader === "0" || chunk.length < perPage)
@@ -169,9 +169,9 @@ app.get("/labels", async (req, res) => {
       page = parseInt(nextPageHeader, 10) || page + 1;
     }
 
-    // اگر لیبل برای AND search داده شده بود، فقط لیبل‌هایی را نگه دار که روی ایشویی باشند که همه لیبل‌ها را دارد
+    
     if (andLabels.length > 0) {
-      // گرفتن همه ایشوهای پروژه
+      
       let issues = [];
       let issuePage = 1;
       const perPage = 100;
@@ -196,18 +196,18 @@ app.get("/labels", async (req, res) => {
         if (issuesChunk.length < perPage) break;
         issuePage++;
       }
-      // پیدا کردن لیبل‌هایی که روی ایشویی هستند که همه لیبل‌های داده‌شده را دارد
+      
       const labelSet = new Set();
       for (const issue of issues) {
         if (!Array.isArray(issue.labels)) continue;
-        // اگر issue همه لیبل‌های andLabels را دارد
+        
         if (andLabels.every((l) => issue.labels.includes(l))) {
           for (const l of issue.labels) {
             labelSet.add(l);
           }
         }
       }
-      // فقط لیبل‌هایی را نگه دار که در labelSet هستند
+      
       const filteredLabels = allLabels.filter((lbl) => labelSet.has(lbl.name));
       return res.json({ status: "success", data: filteredLabels });
     }
@@ -223,20 +223,20 @@ app.get("/labels", async (req, res) => {
 
 const ALL_PROJECT_IDS = [];
 
-// کش برای ذخیره نام پروژه‌ها
+
 const projectNameCache = {};
 
-// تابع کمکی برای استخراج نام پروژه از لیبل‌ها
+
 function extractProjectFromLabels(labels) {
   if (!labels || !Array.isArray(labels)) {
     return "Unknown Project";
   }
 
-  // جستجو برای لیبل‌هایی که با "Project:" شروع می‌شوند
+  
   const projectLabel = labels.find((label) => label.startsWith("Project:"));
 
   if (projectLabel) {
-    // استخراج نام پروژه بعد از "Project:"
+    
     const projectName = projectLabel.replace("Project:", "").trim();
     console.log(`پروژه پیدا شد: ${projectName} از لیبل: ${projectLabel}`);
     return projectName;
@@ -246,9 +246,9 @@ function extractProjectFromLabels(labels) {
   return "Unknown Project";
 }
 
-// تابع کمکی برای گرفتن اسم پروژه از GitLab
+
 async function getProjectName(baseUUrl, projectId) {
-  // اگر نام پروژه در کش موجود است، از کش استفاده می‌کنیم
+  
   if (projectNameCache[projectId]) {
     return projectNameCache[projectId];
   }
@@ -264,7 +264,7 @@ async function getProjectName(baseUUrl, projectId) {
   if (!response.ok) {
     const fallbackName = `Project ${projectId}`;
     projectNameCache[projectId] = fallbackName;
-    return fallbackName; // fallback اگر خطا داد
+    return fallbackName; 
   }
 
   const data = await response.json();
@@ -273,7 +273,7 @@ async function getProjectName(baseUUrl, projectId) {
   return projectName;
 }
 
-// تابع کمکی برای گرفتن همه issues از یک پروژه با pagination
+
 async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
   let allIssues = [];
   let page = 1;
@@ -301,13 +301,13 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
     const issues = await response.json();
 
     if (issues.length === 0) {
-      break; // اگر صفحه خالی است، pagination تمام شده
+      break; 
     }
 
     allIssues = allIssues.concat(issues);
     page++;
 
-    // اگر تعداد issues کمتر از perPage باشد، یعنی آخرین صفحه است
+    
     if (issues.length < perPage) {
       break;
     }
@@ -316,7 +316,7 @@ async function getAllIssuesFromProject(baseUUrl, projectId, milestone) {
   return allIssues;
 }
 
-// خواندن تمام Project ID ها از یک گروه GitLab به صورت داینامیک (pagination)
+
 async function getAllProjectIdsFromGroup(baseUUrl) {
   const groupId = process.env.GITLAB_GROUP_ID;
   if (!groupId) return [];
@@ -347,7 +347,7 @@ async function getAllProjectIdsFromGroup(baseUUrl) {
   return ids;
 }
 
-// تبدیل ورودی projectId به لیست ID ها
+
 async function resolveProjectIds(baseUUrl, projectIdParam) {
   if (projectIdParam === "all") {
     const dynamicIds = await getAllProjectIdsFromGroup(baseUUrl);
@@ -361,7 +361,7 @@ async function resolveProjectIds(baseUUrl, projectIdParam) {
   return [projectIdParam];
 }
 
-// استخراج نام خوانای پروژه از لیبل های الگوی "Project: X"
+
 function getProjectDisplayNameFromLabel(projectLabel) {
   if (typeof projectLabel !== "string") return String(projectLabel || "");
   if (projectLabel.startsWith("Project:")) {
@@ -382,7 +382,7 @@ app.get("/time-spends", async (req, res) => {
         .json({ message: "milestone و projectId الزامی هستند" });
     }
 
-    // گرفتن لیست issues با pagination و پیشفرض state=all
+    
     const perPage = 100;
     let page = 1;
     let issues = [];
@@ -410,9 +410,9 @@ app.get("/time-spends", async (req, res) => {
     }
     let usersIssues = [];
 
-    // حالت ۱: فقط یک یوزر
+    
     if (userId && userId !== "all") {
-      // شناسایی ایشوهایی که کاربر در آرایه assignees دارد یا در فیلد قدیمی assignee است
+      
       const userIssues = issues.filter((issue) => {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
         const inAssignees = assignees.some((a) => a && a.id == userId);
@@ -420,7 +420,7 @@ app.get("/time-spends", async (req, res) => {
         return inAssignees || legacy;
       });
 
-      // سهم کاربر از هر ایشو = کل زمان/تخمین تقسیم بر تعداد assignees (اگر صفر بود و legacy داشت، 1)
+      
       let totalSpent = 0;
       let totalEstimate = 0;
 
@@ -464,15 +464,15 @@ app.get("/time-spends", async (req, res) => {
           totalSpent > 0
             ? ((proj.totalSpent / totalSpent) * 100).toFixed(2)
             : 0;
-        // عملکرد بر اساس روزهای کاری
+        
         proj.performance =
           numWorkingDays && numWorkingDays > 0
             ? ((proj.totalSpent / (numWorkingDays * 8 * 3600)) * 100).toFixed(2)
             : 0;
       });
 
-      // اطلاعات یوزر
-      // تلاش برای استخراج اطلاعات کاربر از assignees یا فیلد legacy
+      
+      
       let userInfo = {};
       for (const issue of userIssues) {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
@@ -496,7 +496,7 @@ app.get("/time-spends", async (req, res) => {
         projects: Object.values(projectsMap),
       });
     }
-    // حالت ۲: همه یوزرها
+    
     else {
       const usersMap = {};
 
@@ -554,7 +554,7 @@ app.get("/time-spends", async (req, res) => {
         }
       }
 
-      // درصد پروژه‌ها
+      
       Object.values(usersMap).forEach((user) => {
         Object.values(user.projects).forEach((proj) => {
           const toHM = (sec) => {
@@ -573,7 +573,7 @@ app.get("/time-spends", async (req, res) => {
             user.totalSpent > 0
               ? ((proj.totalSpent / user.totalSpent) * 100).toFixed(2)
               : 0;
-          // عملکرد بر اساس روزهای کاری
+          
           proj.performance =
             numWorkingDays && numWorkingDays > 0
               ? ((proj.totalSpent / (numWorkingDays * 8 * 3600)) * 100).toFixed(
@@ -596,7 +596,7 @@ app.get("/time-spends", async (req, res) => {
   }
 });
 
-// Milestone daily spends per user: aggregates daily added/subtracted time spent for all issues in milestone
+
 app.get("/milestone-daily-spends", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
@@ -606,19 +606,19 @@ app.get("/milestone-daily-spends", async (req, res) => {
       return res.status(400).json({ message: "milestone الزامی است" });
     }
 
-    // Parse time delta from system note body: supports mo,w,d,h,m,s and deletion notes
+    
     const parseSpentFromNote = (body) => {
       if (typeof body !== "string") return { seconds: 0, forDate: null };
       const lowered = body.toLowerCase();
-      // Deletion form: "deleted X of spent time from YYYY-MM-DD"
+      
       const del = lowered.match(
         /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
       );
       const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
       const H = 3600;
-      const D = 8 * H; // GitLab: 1d = 8h
-      const W = 5 * D; // GitLab: 1w = 5d
-      const MO = 4 * W; // GitLab: 1mo = 4w
+      const D = 8 * H; 
+      const W = 5 * D; 
+      const MO = 4 * W; 
       if (del) {
         const duration = del[1];
         const forDate = del[2];
@@ -665,7 +665,7 @@ app.get("/milestone-daily-spends", async (req, res) => {
       return res.status(400).json({ message: e?.message || String(e) });
     }
 
-    // userId => { userId, username, name, avatar_url, byDate: { 'YYYY-MM-DD': seconds } }
+    
     const usersMap = {};
 
     for (const pid of projectIds) {
@@ -675,7 +675,7 @@ app.get("/milestone-daily-spends", async (req, res) => {
         const issueIid = issue.iid;
         if (!issueIid) continue;
 
-        // Fetch system notes for the issue
+        
         const notesResp = await fetch(
           `${baseUUrl}/projects/${pid}/issues/${issueIid}/notes?system=true&per_page=100`,
           {
@@ -696,7 +696,7 @@ app.get("/milestone-daily-spends", async (req, res) => {
           );
           if (deltaSeconds === 0) continue;
 
-          // Use referenced date for deletions; otherwise use note.created_at day
+          
           const dateKey =
             forDate || new Date(note.created_at).toISOString().slice(0, 10);
           const author = note.author;
@@ -717,20 +717,20 @@ app.get("/milestone-daily-spends", async (req, res) => {
       }
     }
 
-    // Determine target month from milestone (expects a segment like YYYY-MM). Fallback to current UTC month.
+    
     const monthMatch = String(milestone).match(/(\d{4})-(\d{2})/);
     const targetYear = monthMatch
       ? parseInt(monthMatch[1], 10)
       : new Date().getUTCFullYear();
     const targetMonthNum = monthMatch
       ? parseInt(monthMatch[2], 10)
-      : new Date().getUTCMonth() + 1; // 1-12
-    const monthIndex = targetMonthNum - 1; // 0-11
+      : new Date().getUTCMonth() + 1; 
+    const monthIndex = targetMonthNum - 1; 
     const daysInMonth = new Date(
       Date.UTC(targetYear, monthIndex + 1, 0),
     ).getUTCDate();
 
-    // Build full list of dates in the month
+    
     const monthDates = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(Date.UTC(targetYear, monthIndex, day))
@@ -739,7 +739,7 @@ app.get("/milestone-daily-spends", async (req, res) => {
       monthDates.push(d);
     }
 
-    // Transform to required output structure with spends array over full month (fill missing with 0)
+    
     const results = Object.values(usersMap).map((u) => ({
       userId: u.userId,
       username: u.username,
@@ -776,18 +776,18 @@ app.get("/labels-report", async (req, res) => {
 
     let allIssues = [];
 
-    // گرفتن ایشوها از همه پروژه‌ها - با pagination و state=all تا شمارش کامل باشد
+    
     for (const pid of projectIds) {
       const perPage = 100;
       let page = 1;
       while (true) {
         const params = new URLSearchParams();
         if (milestone) params.append("milestone", milestone);
-        // state: opened | closed | all  (پیش‌فرض: فقط باز)
+        
         let desiredState = (req.query.state || "opened")
           .toString()
           .toLowerCase();
-        if (desiredState === "open") desiredState = "opened"; // نگاشت open -> opened برای GitLab
+        if (desiredState === "open") desiredState = "opened"; 
         if (!["opened", "closed", "all"].includes(desiredState))
           desiredState = "opened";
         params.set("state", desiredState);
@@ -819,7 +819,7 @@ app.get("/labels-report", async (req, res) => {
       }
     }
 
-    // فیلتر یوزر
+    
     if (userId && userId !== "all") {
       allIssues = allIssues.filter((issue) => {
         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
@@ -829,14 +829,14 @@ app.get("/labels-report", async (req, res) => {
       });
     }
 
-    // فیلتر ایشوها: فقط ایشوهایی که همه لیبل‌های داده‌شده را دارند (AND)
+    
     const filteredIssues = allIssues.filter(
       (issue) =>
         Array.isArray(issue.labels) &&
         labelList.every((lbl) => issue.labels.includes(lbl)),
     );
 
-    // محاسبات و خروجی بر اساس filteredIssues
+    
     const totalSpent = filteredIssues.reduce(
       (sum, issue) => sum + (issue.time_stats?.total_time_spent || 0),
       0,
@@ -900,16 +900,16 @@ app.get("/labels-report", async (req, res) => {
   }
 });
 
-// Daily report: aggregate per-user spent time for a specific date by parsing system notes
+
 app.get("/daily-report", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
     const { projectId = "all", date } = req.query;
 
-    // target date in YYYY-MM-DD, default to today in UTC
+    
     const targetDate = date || new Date().toISOString().slice(0, 10);
 
-    // Resolve project list
+    
     let projectIds = [];
     try {
       projectIds = await resolveProjectIds(baseUUrl, projectId);
@@ -917,7 +917,7 @@ app.get("/daily-report", async (req, res) => {
       return res.status(400).json({ message: e?.message || String(e) });
     }
 
-    // Helper: robust parse for time spent including deletions and full units
+    
     const parseSpentFromNote = (body) => {
       if (typeof body !== "string") return { seconds: 0, forDate: null };
       const lowered = body.toLowerCase();
@@ -926,7 +926,7 @@ app.get("/daily-report", async (req, res) => {
       const D = 8 * H;
       const W = 5 * D;
       const MO = 4 * W;
-      // Deletion form attributes to a specific date
+      
       const del = lowered.match(
         /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
       );
@@ -968,18 +968,18 @@ app.get("/daily-report", async (req, res) => {
       return { seconds: isSub ? -seconds : seconds, forDate: null };
     };
 
-    // Per-user aggregation map
+    
     const usersMap = {};
 
     for (const pid of projectIds) {
-      // get all issues for this project (no milestone filter to cover daily logs across all)
+      
       const issues = await getAllIssuesFromProject(baseUUrl, pid, "");
 
       for (const issue of issues) {
         const issueIid = issue.iid;
         if (!issueIid) continue;
 
-        // fetch system notes (where time spent commands are recorded)
+        
         const notesResp = await fetch(
           `${baseUUrl}/projects/${pid}/issues/${issueIid}/notes?system=true&per_page=100`,
           {
@@ -994,7 +994,7 @@ app.get("/daily-report", async (req, res) => {
         const notes = await notesResp.json();
 
         for (const note of notes) {
-          // created_at like 2025-09-16T10:20:30.000Z
+          
           const createdAt = note.created_at;
           if (!createdAt || !note.body) continue;
           const noteDate = new Date(createdAt).toISOString().slice(0, 10);
@@ -1003,7 +1003,7 @@ app.get("/daily-report", async (req, res) => {
             note.body,
           );
           if (deltaSeconds === 0) continue;
-          // If deletion references another date, attribute to that date; otherwise use noteDate
+          
           const targetKey = forDate || noteDate;
           if (targetKey !== targetDate) continue;
 
@@ -1042,7 +1042,7 @@ app.get("/daily-report", async (req, res) => {
   }
 });
 
-// Auth routes using MongoDB
+
 app.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body || {};
@@ -1099,9 +1099,9 @@ app.get("/daily", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
     const projectId = process.env.GITLAB_PROJECT_ID;
-    // فقط امروز (UTC)
-    const targetDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    // فقط یک پروژه (taskboard)
+    
+    const targetDate = new Date().toISOString().slice(0, 10); 
+    
     let allIssues = [];
     let page = 1;
     const perPage = 100;
@@ -1110,7 +1110,7 @@ app.get("/daily", async (req, res) => {
       params.set("per_page", String(perPage));
       params.set("page", String(page));
 
-      params.set("state", "opened"); // all TODO()
+      params.set("state", "opened"); 
 
       const url = `${baseUUrl}/projects/${projectId}/issues?${params.toString()}`;
       const resp = await fetch(url, {
@@ -1128,10 +1128,10 @@ app.get("/daily", async (req, res) => {
       page++;
     }
     console.log("Fetched issues:", allIssues.length);
-    // بدون فیلتر لیبل؛ همه ایشوهای برد را پوشش می‌دهیم
+    
 
     const usersMap = {};
-    const limit = 5; // تعداد همزمان fetch
+    const limit = 5; 
     function chunkArray(arr, size) {
       const out = [];
       for (let i = 0; i < arr.length; i += size) {
@@ -1144,14 +1144,14 @@ app.get("/daily", async (req, res) => {
       await Promise.all(
         chunk.map(async (issue) => {
           if (!issue.iid) return;
-          // دریافت لیست افرادی که assignee این ایشو هستند (یا legacy assignee)
+          
           const assignees = Array.isArray(issue.assignees)
             ? issue.assignees
             : [];
           const legacy = issue.assignee ? [issue.assignee] : [];
           const recipients = assignees.length > 0 ? assignees : legacy;
 
-          // ۱) System notes: فقط time spent های امروز و فقط برای کاربری که assignee این ایشوست
+          
           const notesResp = await fetch(
             `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
             {
@@ -1167,7 +1167,7 @@ app.get("/daily", async (req, res) => {
             systemNotes = await notesResp.json();
           }
 
-          // ۱-الف) منبع اصلی محاسبه: رویدادهای time tracking
+          
           let hasAnyEventForIssueToday = false;
           const eventsResp = await fetch(
             `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/resource_time_tracking_events?per_page=100`,
@@ -1190,7 +1190,7 @@ app.get("/daily", async (req, res) => {
               if (!uid) continue;
               const isAssignee = recipients.some((p) => p && p.id === uid);
               if (!isAssignee) continue;
-              const delta = Number(ev.time_spent) || 0; // مثبت یا منفی
+              const delta = Number(ev.time_spent) || 0; 
               if (delta === 0) continue;
               hasAnyEventForIssueToday = true;
 
@@ -1234,7 +1234,7 @@ app.get("/daily", async (req, res) => {
             }
           }
 
-          // ۱-الف-تکمیلی) اعمال حذف‌ها: system note هایی که فرمت "deleted X of spent time from YYYY-MM-DD" دارند
+          
           if (Array.isArray(systemNotes) && systemNotes.length > 0) {
             for (const note of systemNotes) {
               if (!note?.body || !note?.created_at || !note?.author?.id)
@@ -1242,7 +1242,7 @@ app.get("/daily", async (req, res) => {
               const createdKey = new Date(note.created_at)
                 .toISOString()
                 .slice(0, 10);
-              if (createdKey !== targetDate) continue; // فقط نوت‌های ساخته‌شده امروز
+              if (createdKey !== targetDate) continue; 
               const uid = note.author.id;
               const isAssignee = recipients.some((p) => p && p.id === uid);
               if (!isAssignee) continue;
@@ -1254,7 +1254,7 @@ app.get("/daily", async (req, res) => {
               if (!m1) continue;
               const duration = m1[1];
               const fromDate = m1[2];
-              if (fromDate !== targetDate) continue; // حذف مربوط به همین روز باشد
+              if (fromDate !== targetDate) continue; 
 
               let seconds = 0;
               const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
@@ -1264,9 +1264,9 @@ app.get("/daily", async (req, res) => {
                 const unit = mm[2].toLowerCase();
                 if (Number.isNaN(val)) continue;
                 const H = 3600;
-                const D = 8 * H; // GitLab: 1d = 8h
-                const W = 5 * D; // GitLab: 1w = 5d
-                const MO = 4 * W; // GitLab: 1mo = 4w
+                const D = 8 * H; 
+                const W = 5 * D; 
+                const MO = 4 * W; 
                 if (unit === "mo") seconds += val * MO;
                 else if (unit === "w") seconds += val * W;
                 else if (unit === "d") seconds += val * D;
@@ -1275,7 +1275,7 @@ app.get("/daily", async (req, res) => {
                 else if (unit === "s") seconds += val;
               }
               if (seconds === 0) continue;
-              const delta = -seconds; // حذف به صورت منفی
+              const delta = -seconds; 
 
               if (!usersMap[uid]) {
                 usersMap[uid] = {
@@ -1317,7 +1317,7 @@ app.get("/daily", async (req, res) => {
             }
           }
 
-          // ۱-ب) fallback: اگر events امروز موجود نبود، از system notes parse کن
+          
           if (
             !hasAnyEventForIssueToday &&
             Array.isArray(systemNotes) &&
@@ -1344,9 +1344,9 @@ app.get("/daily", async (req, res) => {
                 const unit = m[2].toLowerCase();
                 if (Number.isNaN(val)) continue;
                 const H = 3600;
-                const D = 8 * H; // GitLab: 1d = 8h
-                const W = 5 * D; // GitLab: 1w = 5d
-                const MO = 4 * W; // GitLab: 1mo = 4w
+                const D = 8 * H; 
+                const W = 5 * D; 
+                const MO = 4 * W; 
                 if (unit === "mo") seconds += val * MO;
                 else if (unit === "w") seconds += val * W;
                 else if (unit === "d") seconds += val * D;
@@ -1401,7 +1401,7 @@ app.get("/daily", async (req, res) => {
             }
           }
 
-          // ۲) Non-system notes: شمارش کامنت های امروز از طرف assignee
+          
           const commentsResp = await fetch(
             `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?per_page=100`,
             {
@@ -1415,7 +1415,7 @@ app.get("/daily", async (req, res) => {
           if (commentsResp.ok) {
             const comments = await commentsResp.json();
             for (const note of comments) {
-              // system=true موارد قبلاً پردازش شده اند؛ اینجا فقط non-system ها را می‌شماریم
+              
               if (note?.system) continue;
               if (!note?.created_at || !note?.author?.id) continue;
               const noteDate = new Date(note.created_at)
@@ -1483,7 +1483,7 @@ app.get("/daily", async (req, res) => {
         }),
       );
     }
-    // ۲. ایشوهایی که updated_at امروز دارند (حتی اگر note نداشته باشند)
+    
     for (const issue of allIssues) {
       const updatedDate = issue.updated_at
         ? new Date(issue.updated_at).toISOString().slice(0, 10)
@@ -1506,7 +1506,7 @@ app.get("/daily", async (req, res) => {
             labels: new Set(),
           };
         }
-        // اطلاعات ایشو را به کاربر اضافه کن (اگر قبلاً اضافه نشده)
+        
         if (!usersMap[uid].issues[issue.iid]) {
           usersMap[uid].issues[issue.iid] = {
             iid: issue.iid,
@@ -1527,7 +1527,7 @@ app.get("/daily", async (req, res) => {
       }
     }
     console.log("Notes and updated issues processed");
-    // خروجی نهایی: فقط کاربرانی که امروز note دارند یا ایشویشان آپدیت شده
+    
     const results = Object.values(usersMap).map((u) => ({
       userId: u.userId,
       username: u.username,
@@ -1546,7 +1546,7 @@ app.get("/daily", async (req, res) => {
   }
 });
 
-// Activity over a date range for specific users (state=all, fixed project)
+
 app.get("/activity-range", async (req, res) => {
   try {
     const baseUUrl = process.env.GITLAB_BASE_URL;
@@ -1576,7 +1576,7 @@ app.get("/activity-range", async (req, res) => {
         .json({ message: "حداقل یک userId معتبر لازم است" });
     }
 
-    // Normalize date range (inclusive) in UTC YYYY-MM-DD
+    
     const fromDate = new Date(from);
     const toDate = new Date(to);
     if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
@@ -1589,7 +1589,7 @@ app.get("/activity-range", async (req, res) => {
     const endKey = toKey(toDate);
     const isInRange = (isoDate) => isoDate >= startKey && isoDate <= endKey;
 
-    // Fetch all issues from the single taskboard project (state=all)
+    
     let allIssues = [];
     const perPage = 100;
     {
@@ -1646,7 +1646,7 @@ app.get("/activity-range", async (req, res) => {
         );
         for (const arr of pageResults) allIssues.push(...arr);
       } else {
-        // Fallback pagination if headers are missing
+        
         let page = 2;
         while (true) {
           const params2 = new URLSearchParams();
@@ -1695,13 +1695,13 @@ app.get("/activity-range", async (req, res) => {
           const legacy = issue.assignee ? [issue.assignee] : [];
           const recipients = assignees.length > 0 ? assignees : legacy;
 
-          // Only consider if at least one of target users is an assignee
+          
           const targetAssignees = recipients.filter(
             (p) => p && userIds.includes(Number(p.id)),
           );
-          if (targetAssignees.length === 0) return; // No qualifying assignee → no qualifying notes/comments
+          if (targetAssignees.length === 0) return; 
 
-          // Fetch system and non-system notes in parallel
+          
           const [sysNotesResp, notesResp] = await Promise.all([
             fetch(
               `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`,
@@ -1727,7 +1727,7 @@ app.get("/activity-range", async (req, res) => {
             ),
           ]);
 
-          // 1) System notes: time spent deltas within range, authored by target users who are assignees
+          
           if (sysNotesResp.ok) {
             const notes = await sysNotesResp.json();
             for (const note of notes) {
@@ -1743,22 +1743,22 @@ app.get("/activity-range", async (req, res) => {
               );
               if (!isAssignee) continue;
               const body = String(note.body).toLowerCase();
-              // Handle explicit deletion notes: "deleted X of spent time from YYYY-MM-DD"
+              
               const delMatch = body.match(
                 /deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i,
               );
               if (delMatch) {
                 const duration = delMatch[1];
                 const fromDateKey = delMatch[2];
-                // Attribute deletion to the referenced date if it falls in range
+                
                 if (!isInRange(fromDateKey)) continue;
                 let seconds = 0;
                 const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
                 let m;
                 const H = 3600;
-                const D = 8 * H; // GitLab: 1d = 8h
-                const W = 5 * D; // GitLab: 1w = 5d
-                const MO = 4 * W; // GitLab: 1mo = 4w
+                const D = 8 * H; 
+                const W = 5 * D; 
+                const MO = 4 * W; 
                 while ((m = unitRe2.exec(duration)) !== null) {
                   const val = parseInt(m[1], 10);
                   const unit = m[2].toLowerCase();
@@ -1784,7 +1784,7 @@ app.get("/activity-range", async (req, res) => {
                     byDate: {},
                   };
                 }
-                // Deletions subtract time
+                
                 usersMap[authorId].totalSpent -= seconds;
                 if (!usersMap[authorId].issues[issue.iid]) {
                   usersMap[authorId].issues[issue.iid] = {
@@ -1836,13 +1836,13 @@ app.get("/activity-range", async (req, res) => {
                   }
                 }
                 usersMap[authorId].issues[issue.iid].spentInRange -= seconds;
-                // attribute to referenced date
+                
                 usersMap[authorId].byDate[fromDateKey] =
                   (usersMap[authorId].byDate[fromDateKey] || 0) - seconds;
                 continue;
               }
 
-              // Normal add/subtract entries; attribute to note date if in range
+              
               if (!isInRange(noteKey)) continue;
               const isAdd =
                 body.includes("added") && body.includes("time spent");
@@ -1853,9 +1853,9 @@ app.get("/activity-range", async (req, res) => {
               const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
               let mm;
               const H = 3600;
-              const D = 8 * H; // GitLab: 1d = 8h
-              const W = 5 * D; // GitLab: 1w = 5d
-              const MO = 4 * W; // GitLab: 1mo = 4w
+              const D = 8 * H; 
+              const W = 5 * D; 
+              const MO = 4 * W; 
               while ((mm = unitRe.exec(body)) !== null) {
                 const val = parseInt(mm[1], 10);
                 const unit = mm[2].toLowerCase();
@@ -1932,11 +1932,11 @@ app.get("/activity-range", async (req, res) => {
               usersMap[authorId].issues[issue.iid].spentInRange += isSub
                 ? -seconds
                 : seconds;
-              // attribute to note date
+              
               usersMap[authorId].byDate[noteKey] =
                 (usersMap[authorId].byDate[noteKey] || 0) +
                 (isSub ? -seconds : seconds);
-              // Detect "large one-off" spends (>= 1d)
+              
               if (isAdd && seconds >= 8 * 3600) {
                 usersMap[authorId].issues[
                   issue.iid
@@ -1948,11 +1948,11 @@ app.get("/activity-range", async (req, res) => {
             }
           }
 
-          // 2) Non-system notes: count comments within range authored by target users who are assignees
+          
           if (notesResp.ok) {
             const notes = await notesResp.json();
             for (const note of notes) {
-              if (note?.system) continue; // skip system; handled above
+              if (note?.system) continue; 
               if (!note?.created_at || !note?.author?.id) continue;
               const noteKey = new Date(note.created_at)
                 .toISOString()
@@ -2025,7 +2025,7 @@ app.get("/activity-range", async (req, res) => {
                 }
               }
               usersMap[authorId].issues[issue.iid].commentsInRange += 1;
-              // Heuristic: count description edits within range
+              
               const lastEditedAt = note.last_edited_at || note.updated_at;
               const editor = note.last_edited_by || note.editor || note.author;
               if (lastEditedAt) {
@@ -2059,7 +2059,7 @@ app.get("/activity-range", async (req, res) => {
       );
     }
 
-    // 3) Include issues updated within range for those users (even if no notes/comments)
+    
     for (const issue of allIssues) {
       const updatedKey = issue.updated_at
         ? new Date(issue.updated_at).toISOString().slice(0, 10)
@@ -2101,7 +2101,7 @@ app.get("/activity-range", async (req, res) => {
       }
     }
 
-    // 3b) Include issues created within range for those users (even if no notes/comments)
+    
     for (const issue of allIssues) {
       const createdKey = issue.created_at
         ? new Date(issue.created_at).toISOString().slice(0, 10)
@@ -2143,20 +2143,20 @@ app.get("/activity-range", async (req, res) => {
       }
     }
 
-    // Compute per-issue suspicious reasons and per-user realness with stricter daily-hour rules
+    
     for (const u of Object.values(usersMap)) {
       let totalIssueCount = 0;
-      let realnessSum = 0; // sum of per-issue scores in [0,1]
-      let suspiciousIssueCount = 0; // for reference only
-      // Daily hours aggregation from byDate (seconds)
+      let realnessSum = 0; 
+      let suspiciousIssueCount = 0; 
+      
       const dailyKeys = Object.keys(u.byDate || {}).sort();
       const daily = dailyKeys.map((k) => ({
         date: k,
         spent: u.byDate[k] || 0,
       }));
       const H = 3600;
-      const targetDailyMax = 7.5 * H; // 7h30m
-      const minHealthy = 5 * H; // 5h
+      const targetDailyMax = 7.5 * H; 
+      const minHealthy = 5 * H; 
       let daysBelowMin = 0;
       let daysAboveTarget = 0;
       for (const d of daily) {
@@ -2180,7 +2180,7 @@ app.get("/activity-range", async (req, res) => {
           Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0;
         if (hasBigOneOff) reasons.push("large_one_off_spend");
 
-        // Enrich quality with derived values
+        
         const estimate = Number(iss?.time_stats?.time_estimate) || 0;
         const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
         const spentInRange = Number(iss?.spentInRange) || 0;
@@ -2189,11 +2189,11 @@ app.get("/activity-range", async (req, res) => {
         q.hasBigOneOffSpend = hasBigOneOff;
         iss.quality = q;
 
-        // Stricter per-issue realness scoring influenced by daily behavior
+        
         let score = 1.0;
         const subtract = (v) => (score = Math.max(0, score - v));
         const add = (v) => (score = Math.min(1, score + v));
-        // penalties (mild to moderate)
+        
         if (q.hasTitle === false) subtract(0.12);
         if (q.hasDescription === false) subtract(0.12);
         if (q.spentEqualsEstimate === true) subtract(0.18);
@@ -2203,10 +2203,10 @@ app.get("/activity-range", async (req, res) => {
         if (q.hasStatusLabel === false) subtract(0.06);
         if ((q.descriptionEditsInRange || 0) >= 3) subtract(0.12);
         if (hasBigOneOff) subtract(0.18);
-        // daily behavior influence (applied gently but consistently to each issue)
+        
         if (daysBelowMin > 0) subtract(Math.min(0.2, 0.02 * daysBelowMin));
         if (daysAboveTarget > 0) add(Math.min(0.15, 0.015 * daysAboveTarget));
-        // bonuses for activity
+        
         if (spentInRange > 0) add(0.08);
         if ((iss?.commentsInRange || 0) > 0)
           add(Math.min(0.08, 0.02 * iss.commentsInRange));
@@ -2227,7 +2227,7 @@ app.get("/activity-range", async (req, res) => {
         totalIssueCount > 0
           ? Number((realnessSum / totalIssueCount) * 100).toFixed(2)
           : 100;
-      // Add human-readable daily metrics and overtime flag
+      
       const toHM = (s) => {
         const sec = Math.round(Number(s) || 0);
         const h = Math.floor(sec / 3600);
