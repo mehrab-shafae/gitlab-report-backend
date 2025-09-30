@@ -1429,6 +1429,7 @@ function master1() {
                                                             usersMap[authorId].issues[issue.iid] = {
                                                                   iid: issue.iid,
                                                                   title: issue.title,
+                                                                  state: issue.state,
                                                                   labels: issue.labels,
                                                                   time_stats: issue.time_stats,
                                                                   milestone: issue.milestone,
@@ -1492,6 +1493,7 @@ function master1() {
                                                             issues: {},
                                                             labels: new Set(),
                                                             byDate: {},
+                                                            spendAddLog: [],
                                                       };
                                                 }
                                                 usersMap[authorId].totalSpent += isSub ? -seconds : seconds;
@@ -1499,6 +1501,7 @@ function master1() {
                                                       usersMap[authorId].issues[issue.iid] = {
                                                             iid: issue.iid,
                                                             title: issue.title,
+                                                                  state: issue.state,
                                                             labels: issue.labels,
                                                             time_stats: issue.time_stats,
                                                             milestone: issue.milestone,
@@ -1525,6 +1528,16 @@ function master1() {
                                                 usersMap[authorId].issues[issue.iid].spentInRange += isSub ? -seconds : seconds;
 
                                                 usersMap[authorId].byDate[noteKey] = (usersMap[authorId].byDate[noteKey] || 0) + (isSub ? -seconds : seconds);
+
+                                                // ثبت لاگ افزودن spend برای تحلیل افزایش‌های مشکوک
+                                                if (isAdd && seconds > 0) {
+                                                      if (!Array.isArray(usersMap[authorId].spendAddLog)) usersMap[authorId].spendAddLog = [];
+                                                      usersMap[authorId].spendAddLog.push({
+                                                            at: note.created_at,
+                                                            seconds,
+                                                            issue_iid: issue.iid,
+                                                      });
+                                                }
 
                                                 if (isAdd && seconds >= 8 * 3600) {
                                                       usersMap[authorId].issues[issue.iid].quality.largeOneOffSpends.push({
@@ -1563,6 +1576,7 @@ function master1() {
                                                       usersMap[authorId].issues[issue.iid] = {
                                                             iid: issue.iid,
                                                             title: issue.title,
+                                                            state: issue.state,
                                                             labels: issue.labels,
                                                             time_stats: issue.time_stats,
                                                             milestone: issue.milestone,
@@ -1630,6 +1644,7 @@ function master1() {
                                     usersMap[uid].issues[issue.iid] = {
                                           iid: issue.iid,
                                           title: issue.title,
+                                          state: issue.state,
                                           labels: issue.labels,
                                           time_stats: issue.time_stats,
                                           milestone: issue.milestone,
@@ -1669,6 +1684,7 @@ function master1() {
                                     usersMap[uid].issues[issue.iid] = {
                                           iid: issue.iid,
                                           title: issue.title,
+                                          state: issue.state,
                                           labels: issue.labels,
                                           time_stats: issue.time_stats,
                                           milestone: issue.milestone,
@@ -1735,6 +1751,23 @@ function master1() {
                               }
                         }
 
+                        // --- تحلیل افزایش‌های مشکوک spend بر اساس لاگ‌ها ---
+                        let suspiciousIncrementCount = 0;
+                        if (Array.isArray(u.spendAddLog) && u.spendAddLog.length > 1) {
+                              const ordered = [...u.spendAddLog].sort((a, b) => new Date(a.at) - new Date(b.at));
+                              for (let i = 1; i < ordered.length; i++) {
+                                    const prev = ordered[i - 1];
+                                    const curr = ordered[i];
+                                    if (prev && curr && prev.seconds > 0 && curr.seconds > 0) {
+                                          // اگر قبلی حدود 1h و بعدی 2h باشد (یا نسبت 1:2 با تلورانس)
+                                          const ratio = curr.seconds / prev.seconds;
+                                          if (ratio >= 1.9 && ratio <= 2.1 && prev.seconds >= 50 * 60 && prev.seconds <= 70 * 60) {
+                                                suspiciousIncrementCount += 1;
+                                          }
+                                    }
+                              }
+                        }
+
                         // امتیازدهی realness
                         let realnessScore = 1.0;
                         // کم‌کاری
@@ -1750,6 +1783,8 @@ function master1() {
                         if (daysExtremeFake > 0) realnessScore -= Math.min(0.6, 0.25 * daysExtremeFake);
                         // large one-off spends
                         if (largeOneOffSpendsCount > 0) realnessScore -= Math.min(0.4, 0.1 * largeOneOffSpendsCount);
+                        // افزایش‌های مشکوک (پنالتی کم به دلیل احتمال خطا)
+                        if (suspiciousIncrementCount > 0) realnessScore -= Math.min(0.05, 0.01 * suspiciousIncrementCount);
                         // محدودیت امتیاز
                         realnessScore = Math.max(0, Math.min(1, realnessScore));
 
@@ -1832,6 +1867,19 @@ function master1() {
                             qualityScore = Math.max(0, Math.min(1, qualityScore));
                             q.qualityScore = Number(qualityScore.toFixed(2));
                             q.qualityPenalties = qualityPenalties;
+                            // پاداش همراستایی spent و estimate: هرچه نسبت نزدیک‌تر به ۱، امتیاز بهتر
+                            // از نسبت spentToEstimateRatio استفاده می‌کنیم که در بالا محاسبه شد
+                            let estimateAlignment = 0;
+                            if (q.spentToEstimateRatio !== null && q.spentToEstimateRatio !== undefined) {
+                                const ratioNum = Number(q.spentToEstimateRatio);
+                                if (!Number.isNaN(ratioNum)) {
+                                    const diff = Math.abs(1 - ratioNum);
+                                    // نگاشت دیف به بازه [0,1] (هرچه کمتر بهتر)
+                                    const alignment = Math.max(0, 1 - Math.min(1, diff));
+                                    estimateAlignment = Number(alignment.toFixed(2));
+                                }
+                            }
+                            q.estimateAlignment = estimateAlignment; // برای گزارش‌گیری
                             iss.quality = q;
                         }
 
@@ -1843,6 +1891,7 @@ function master1() {
                             daysAboveMax: u.daysAboveMax,
                             daysFake: u.daysFake,
                             largeOneOffSpendsCount: u.largeOneOffSpendsCount,
+                            suspiciousIncrementCount: suspiciousIncrementCount,
                             totalSpent: u.totalSpent,
                             avgDailySpent: u.totalDays > 0 ? Math.round(u.totalSpent / u.totalDays) : 0,
                             realnessPercent: u.realnessPercent,
@@ -1873,6 +1922,8 @@ function master1() {
                         if (belowMinDates.length > 0) guidance.push(`در روزهای ${belowMinDates.join(', ')} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
                         // پیام large one-off spends
                         if (u.largeOneOffSpendsCount > 0) guidance.push('چند spend بزرگ یکجا ثبت شده که مشکوک به فیک بودن است.');
+                        // پیام افزایش‌های مشکوک
+                        if (u.suspiciousIncrementCount > 0) guidance.push(`در ${u.suspiciousIncrementCount} مورد افزایش مشکوک spend (۱ ساعت → ۲ ساعت) مشاهده شد.`);
                         // کیفیت ایشوها
                         if (u.summary.qualityDistribution.weak > 0) guidance.push('برخی ایشوها کیفیت پایینی دارند. لطفاً عنوان، توضیح و برآورد زمانی را کامل‌تر وارد کنید.');
                         if (u.summary.qualityDistribution.good === 0) guidance.push('هیچ ایشوی با کیفیت عالی ثبت نشده است.');
@@ -1884,10 +1935,18 @@ function master1() {
                         let trend = 'stable';
                         if (u.dailySummary && u.dailySummary.length > 4) {
                             const mid = Math.floor(u.dailySummary.length / 2);
-                            const firstHalf = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0) / (mid || 1);
-                            const secondHalf = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0) / (u.dailySummary.length - mid || 1);
-                            if (secondHalf > firstHalf * 1.1) trend = 'improving';
-                            else if (secondHalf < firstHalf * 0.9) trend = 'declining';
+                            const firstHalfSum = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0);
+                            const secondHalfSum = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0);
+                            const firstHalf = firstHalfSum / (mid || 1);
+                            const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
+                            const totalSum = firstHalfSum + secondHalfSum;
+                            const H = 3600;
+                            const minSpendForTrend = 3 * H; // حداقل ۳ ساعت مجموع برای تحلیل روند
+                            const minAbsoluteDelta = 1 * H;  // حداقل اختلاف میانگین ۱ ساعت
+                            if (totalSum >= minSpendForTrend) {
+                                  if (secondHalf > firstHalf * 1.1 && (secondHalf - firstHalf) >= minAbsoluteDelta) trend = 'improving';
+                                  else if (secondHalf < firstHalf * 0.9 && (firstHalf - secondHalf) >= minAbsoluteDelta) trend = 'declining';
+                            }
                         }
                         u.summary.guidance = guidance;
                         u.summary.trend = trend;
@@ -1907,6 +1966,56 @@ function master1() {
                         }
                         u.absenceDays = absenceDays;
                         u.absenceCount = absenceDays.length;
+                        // --- گسترش dailySummary برای نمایش روزهای غیبت با spent صفر ---
+                        try {
+                              const currentSummary = Array.isArray(u.dailySummary) ? u.dailySummary : [];
+                              const currentDates = new Set(currentSummary.map(d => d.date));
+                              const expandedDaily = currentSummary.slice();
+                              for (const date of allDates) {
+                                    if (!currentDates.has(date)) {
+                                          expandedDaily.push({
+                                                date,
+                                                spent: 0,
+                                                spent_hm: '0h 0m',
+                                                isAbsence: true,
+                                          });
+                                    }
+                              }
+                              expandedDaily.sort((a, b) => a.date.localeCompare(b.date));
+                              u.dailySummary = expandedDaily;
+                        } catch (e) {
+                              // ignore expansion errors to avoid breaking existing logic
+                        }
+                        // --- بروزرسانی totalDays بر اساس روزهای کاری بازه ---
+                        try {
+                              const workingDaysCount = allDates.length;
+                              u.totalDays = workingDaysCount;
+                              if (u.summary) {
+                                    u.summary.totalDays = workingDaysCount;
+                                    const newAvg = workingDaysCount > 0 ? Math.round((u.totalSpent || 0) / workingDaysCount) : 0;
+                                    u.summary.avgDailySpent = newAvg;
+                              }
+                        } catch (e) {}
+                        // --- محاسبه دوباره trend بر اساس dailySummary توسعه‌یافته ---
+                        try {
+                              if (u.dailySummary && u.dailySummary.length > 4) {
+                                    const mid = Math.floor(u.dailySummary.length / 2);
+                                    const firstHalfSum = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0);
+                                    const secondHalfSum = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0);
+                                    const firstHalf = firstHalfSum / (mid || 1);
+                                    const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
+                                    let trend = 'stable';
+                                    const H = 3600;
+                                    const minSpendForTrend = 3 * H;
+                                    const minAbsoluteDelta = 1 * H;
+                                    if ((firstHalfSum + secondHalfSum) >= minSpendForTrend) {
+                                          if (secondHalf > firstHalf * 1.1 && (secondHalf - firstHalf) >= minAbsoluteDelta) trend = 'improving';
+                                          else if (secondHalf < firstHalf * 0.9 && (firstHalf - secondHalf) >= minAbsoluteDelta) trend = 'declining';
+                                    }
+                                    if (!u.summary) u.summary = {};
+                                    u.summary.trend = trend;
+                              }
+                        } catch (e) {}
                         if (!u.absencePenalty) u.absencePenalty = 0;
                         // --- absence penalty جدید و نمایی ---
                         const minWorkingDays = allDates.length;
@@ -1921,6 +2030,20 @@ function master1() {
                         absencePenalty = Math.min(0.9, absencePenalty);
                         u.absencePenalty = absencePenalty;
                         u.realnessPercent = Math.max(0, u.realnessPercent - absencePenalty * 100);
+                        // --- کاهش ملایم اضافه بر اساس نسبت غیبت‌های بسیار بالا ---
+                        try {
+                              const absenceRatio = (u.absenceCount || 0) / (u.totalDays || 1);
+                              let extraDrop = 0;
+                              if (absenceRatio >= 0.9) extraDrop = 20;
+                              else if (absenceRatio >= 0.75) extraDrop = 12;
+                              else if (absenceRatio >= 0.6) extraDrop = 8;
+                              if (extraDrop > 0) {
+                                    u.realnessPercent = Math.max(0, u.realnessPercent - extraDrop);
+                                    if (u.summary && Array.isArray(u.summary.guidance)) {
+                                          u.summary.guidance.push('به علت نسبت زیاد روزهای بدون فعالیت، امتیاز واقعیت کمی کاهش یافت.');
+                                    }
+                              }
+                        } catch (e) {}
                         if (!u.summary) u.summary = {};
                         if (!u.summary.guidance) u.summary.guidance = [];
                         // --- guidance تاریخ‌دار absence ---
@@ -1975,11 +2098,25 @@ function master1() {
                         // absence: نسبت روزهای absence به کل روزهای کاری (۰ تا ۱)
                         const absenceRatioBreakdown = (u.absenceCount || 0) / (u.totalDays || 1);
                         // totalScore: ترکیبی از وزن‌های پویا
-                        const totalScore = Math.max(0, Math.min(1,
+                        let totalScore = Math.max(0, Math.min(1,
                               weights.realness * realnessScoreBreakdown +
                               weights.quality * qualityScoreBreakdown +
                               weights.absence * (1 - absenceRatioBreakdown)
                         ));
+                        // پاداش همراستایی spent و estimate در سطح یوزر (میانگین alignment آیتم‌ها)
+                        let userEstimateAlignment = 0;
+                        let userEstimateAlignmentCount = 0;
+                        for (const iss of Object.values(u.issues)) {
+                              const q = iss.quality || {};
+                              if (typeof q.estimateAlignment === 'number') {
+                                    userEstimateAlignment += q.estimateAlignment;
+                                    userEstimateAlignmentCount += 1;
+                              }
+                        }
+                        userEstimateAlignment = userEstimateAlignmentCount > 0 ? userEstimateAlignment / userEstimateAlignmentCount : 0;
+                        // حداکثر ۰.05 امتیاز اضافه بر اساس همراستایی خوب
+                        const estimateBonus = Math.min(0.05, 0.05 * userEstimateAlignment);
+                        totalScore = Math.min(1, totalScore + estimateBonus);
                         // اضافه به summary
                         if (!u.summary) u.summary = {};
                         u.summary.scores = {
@@ -1987,6 +2124,7 @@ function master1() {
                               quality: Number(qualityScoreBreakdown.toFixed(2)),
                               absence: Number(absenceRatioBreakdown.toFixed(2)),
                               totalScore: Number(totalScore.toFixed(2)),
+                              estimateAlignment: Number(userEstimateAlignment.toFixed(2)),
                         };
                         u.summary.weightsUsed = { ...weights };
                         // --- guidance مثبت و منفی بر اساس trend ---
@@ -1995,6 +2133,14 @@ function master1() {
                                     u.summary.guidance.push('عملکرد شما در روزهای اخیر رو به بهبود است. ادامه دهید!');
                               } else if (u.summary.trend === 'declining') {
                                     u.summary.guidance.push('عملکرد شما در روزهای اخیر افت داشته است. لطفاً دقت بیشتری داشته باشید.');
+                              }
+                        }
+                        // پیام راهنما بر اساس همراستایی estimate/spent
+                        if (u.summary && typeof u.summary.scores?.estimateAlignment === 'number') {
+                              if (u.summary.scores.estimateAlignment >= 0.8) {
+                                    u.summary.guidance.push('همراستایی خوبی بین زمان برآورد و زمان مصرف‌شده دارید.');
+                              } else if (u.summary.scores.estimateAlignment <= 0.3) {
+                                    u.summary.guidance.push('اختلاف قابل توجهی بین estimate و spent دیده می‌شود. دقت در ثبت زمان را افزایش دهید.');
                               }
                         }
                         // --- تحلیل توزیع spend در روزهای بازه ---
@@ -2046,10 +2192,12 @@ function master1() {
                         name: u.name,
                         avatar_url: u.avatar_url,
                         summary: u.summary,
+                        closedIssuesCount: Object.values(u.issues).filter(iss => iss.state === 'closed').length,
                         dailySummary: u.dailySummary,
                         issues: Object.values(u.issues).map(iss => ({
                             iid: iss.iid,
                             title: iss.title,
+                            state: iss.state,
                             labels: iss.labels,
                             time_stats: iss.time_stats,
                             milestone: iss.milestone,
