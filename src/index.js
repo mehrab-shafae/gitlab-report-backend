@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import ExcelJS from 'exceljs';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
@@ -2405,6 +2406,67 @@ function master1() {
                         })),
                         labels: Array.from(u.labels),
                   }));
+
+                  // ساخت و ذخیره فایل اکسل خروجی
+                  try {
+                        const workbook = new ExcelJS.Workbook();
+                        const wsSummary = workbook.addWorksheet('Summary');
+                        wsSummary.columns = [
+                              { header: 'User ID', key: 'userId', width: 12 },
+                              { header: 'Username', key: 'username', width: 20 },
+                              { header: 'Name', key: 'name', width: 24 },
+                              { header: 'Total Spent (h)', key: 'totalSpentH', width: 16 },
+                              { header: 'Realness', key: 'realness', width: 12 },
+                              { header: 'Quality', key: 'quality', width: 12 },
+                              { header: 'Absence', key: 'absence', width: 12 },
+                              { header: 'Score', key: 'score', width: 12 },
+                        ];
+                        for (const u of results) {
+                              const s = u.summary?.scores || {};
+                              wsSummary.addRow({
+                                    userId: u.userId,
+                                    username: u.username,
+                                    name: u.name,
+                                    totalSpentH: ((u.summary?.totalSpent || 0) / 3600).toFixed(2),
+                                    realness: s.realness ?? '',
+                                    quality: s.quality ?? '',
+                                    absence: s.absence ?? '',
+                                    score: s.totalScore ?? '',
+                              });
+                        }
+
+                        const wsIssues = workbook.addWorksheet('Issues');
+                        wsIssues.columns = [
+                              { header: 'User ID', key: 'userId', width: 12 },
+                              { header: 'Username', key: 'username', width: 20 },
+                              { header: 'Issue IID', key: 'iid', width: 10 },
+                              { header: 'Title', key: 'title', width: 40 },
+                              { header: 'State', key: 'state', width: 12 },
+                              { header: 'Spent (h)', key: 'spentH', width: 12 },
+                              { header: 'Comments', key: 'comments', width: 10 },
+                        ];
+                        for (const u of results) {
+                              for (const iss of u.issues || []) {
+                                    wsIssues.addRow({
+                                          userId: u.userId,
+                                          username: u.username,
+                                          iid: iss.iid,
+                                          title: iss.title,
+                                          state: iss.state,
+                                          spentH: ((iss.spentInRange || 0) / 3600).toFixed(2),
+                                          comments: iss.commentsInRange || 0,
+                                    });
+                              }
+                        }
+
+                        const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+                        const safeUsers = String(users).replace(/[^0-9,]/g, '');
+                        const filename = `activity-range_${safeUsers}_${startKey}_to_${endKey}_${ts}.xlsx`;
+                        await workbook.xlsx.writeFile(filename);
+                        console.log(`Excel exported: ${filename}`);
+                  } catch (ex) {
+                        console.error('Excel export failed:', ex?.message || ex);
+                  }
 
                   res.json(results);
             } catch (error) {

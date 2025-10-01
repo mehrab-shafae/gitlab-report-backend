@@ -30,3 +30,5 @@ yarn.lock
 # vercel
 .vercel
 uploads/
+
+*xlsx
