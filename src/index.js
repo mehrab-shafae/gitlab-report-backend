@@ -41,6 +41,11 @@ const port = process.env.PORT || 3000;
 const perPage = 100; //, 50, 100
 const adminUser = process.env.adminUser || 'master';
 const JWT_SECRET = process.env.JWT_SECRET || 'fdffdsasd4343';
+const DEV_MODE = process.env.DEV_MODE === 'true';
+
+if (DEV_MODE) {
+      console.log('🔧 Development mode is ENABLED - Token validation bypassed');
+}
 
 const originsC = ['http://localhost:3000', 'http://localhost:3001', process.env.originsCors];
 
@@ -132,28 +137,15 @@ function masterOAuth() {
 }
 
 function master1() {
-      // --- Auth & Access middleware for master1 routes ---
-      async function fetchGitlabUsers() {
-            const response = await fetch(`${baseUUrl}/users`, {
-                  method: 'GET',
-                  headers: {
-                        'Content-Type': 'application/json',
-                        'PRIVATE-TOKEN': token,
-                  },
-            });
-            if (!response.ok) {
-                  throw new Error('Failed to fetch GitLab users');
-            }
-            const data = await response.json();
-            return Array.isArray(data) ? data : [];
-      }
-
       app.use(async (req, res, next) => {
             try {
+                  if (DEV_MODE) {
+                        req.auth = { isAdmin: true, username: adminUser };
+                        return next();
+                  }
+
                   const authHeader = req.headers['authorization'] || '';
-                  const tokenStr = authHeader.startsWith('Bearer ')
-                        ? authHeader.slice(7)
-                        : (req.headers['x-access-token'] || '').toString();
+                  const tokenStr = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (req.headers['x-access-token'] || '').toString();
 
                   if (!tokenStr) {
                         return res.status(401).json({ message: 'توکن ارائه نشده است' });
@@ -376,6 +368,18 @@ function master1() {
                         return res.status(400).json({ message: 'milestone و projectId الزامی هستند' });
                   }
 
+                  // اگر کاربر عادی است، فقط داده‌های خودش را ببیند
+                  if (!req.auth.isAdmin && req.auth.gitlabUserId) {
+                        // اگر userId در query مشخص شده و با کاربر فعلی متفاوت است، خطا
+                        if (userId && userId !== req.auth.gitlabUserId.toString()) {
+                              return res.status(403).json({ message: 'شما فقط می‌توانید داده‌های خودتان را مشاهده کنید' });
+                        }
+                        // اگر userId مشخص نشده، خودکار روی کاربر فعلی تنظیم کن
+                        if (!userId) {
+                              req.query.userId = req.auth.gitlabUserId.toString();
+                        }
+                  }
+
                   let page = 1;
                   let issues = [];
                   while (true) {
@@ -586,7 +590,10 @@ function master1() {
                         if (!isAdd && !isSub) return { seconds: 0, forDate: null };
                         let seconds = 0;
                         let mm;
-                        while ((mm = unitRe.exec(lowered)) !== null) {
+                        // استخراج duration دقیق پس از added/subtracted
+                        const addSubMatch = lowered.match(/(?:added|subtracted)\s+(.+?)\s+of\s+time\s+spent/i);
+                        const parseSource = addSubMatch ? addSubMatch[1] : lowered;
+                        while ((mm = unitRe.exec(parseSource)) !== null) {
                               const val = parseInt(mm[1], 10);
                               const unit = mm[2].toLowerCase();
                               if (Number.isNaN(val)) continue;
@@ -633,19 +640,25 @@ function master1() {
                                     if (deltaSeconds === 0) continue;
 
                                     const dateKey = forDate || new Date(note.created_at).toISOString().slice(0, 10);
-                                    const author = note.author;
-                                    const uid = author.id;
-
-                                    if (!usersMap[uid]) {
-                                          usersMap[uid] = {
-                                                userId: uid,
-                                                username: author.username || '',
-                                                name: author.name || '',
-                                                avatar_url: author.avatar_url || '',
-                                                byDate: {},
-                                          };
+                                    // توزیع spend بین assigneeهای issue؛ در صورت نبود، نسبت به author
+                                    const assignees = Array.isArray(issue.assignees) ? issue.assignees : issue.assignee ? [issue.assignee] : [];
+                                    const shareTargets = assignees.length > 0 ? assignees : [note.author];
+                                    const shareCount = shareTargets.length;
+                                    const shareSeconds = deltaSeconds / shareCount;
+                                    for (const person of shareTargets) {
+                                          if (!person || !person.id) continue;
+                                          const uid = person.id;
+                                          if (!usersMap[uid]) {
+                                                usersMap[uid] = {
+                                                      userId: uid,
+                                                      username: person.username || '',
+                                                      name: person.name || '',
+                                                      avatar_url: person.avatar_url || '',
+                                                      byDate: {},
+                                                };
+                                          }
+                                          usersMap[uid].byDate[dateKey] = (usersMap[uid].byDate[dateKey] || 0) + shareSeconds;
                                     }
-                                    usersMap[uid].byDate[dateKey] = (usersMap[uid].byDate[dateKey] || 0) + deltaSeconds;
                               }
                         }
                   }
@@ -685,6 +698,18 @@ function master1() {
 
                   if (!labels) {
                         return res.status(400).json({ message: 'حداقل یک لیبل الزامی است' });
+                  }
+
+                  // اگر کاربر عادی است، فقط داده‌های خودش را ببیند
+                  if (!req.auth.isAdmin && req.auth.gitlabUserId) {
+                        // اگر userId در query مشخص شده و با کاربر فعلی متفاوت است، خطا
+                        if (userId && userId !== req.auth.gitlabUserId.toString()) {
+                              return res.status(403).json({ message: 'شما فقط می‌توانید داده‌های خودتان را مشاهده کنید' });
+                        }
+                        // اگر userId مشخص نشده، خودکار روی کاربر فعلی تنظیم کن
+                        if (!userId) {
+                              req.query.userId = req.auth.gitlabUserId.toString();
+                        }
                   }
 
                   const labelList = labels.split(',').map(l => l.trim());
@@ -842,7 +867,10 @@ function master1() {
                         if (!isAdd && !isSub) return { seconds: 0, forDate: null };
                         let seconds = 0;
                         let mm;
-                        while ((mm = unitRe.exec(lowered)) !== null) {
+                        // استخراج duration دقیق پس از added/subtracted
+                        const addSubMatch = lowered.match(/(?:added|subtracted)\s+(.+?)\s+of\s+time\s+spent/i);
+                        const parseSource = addSubMatch ? addSubMatch[1] : lowered;
+                        while ((mm = unitRe.exec(parseSource)) !== null) {
                               const val = parseInt(mm[1], 10);
                               const unit = mm[2].toLowerCase();
                               if (Number.isNaN(val)) continue;
@@ -886,20 +914,25 @@ function master1() {
                                     const targetKey = forDate || noteDate;
                                     if (targetKey !== targetDate) continue;
 
-                                    const author = note.author || {};
-                                    const uid = author.id;
-                                    if (!uid) continue;
-
-                                    if (!usersMap[uid]) {
-                                          usersMap[uid] = {
-                                                userId: uid,
-                                                username: author.username || '',
-                                                name: author.name || '',
-                                                avatar_url: author.avatar_url || '',
-                                                dailySpent: 0,
-                                          };
+                                    // توزیع بین assigneeها؛ اگر نداشت، روی author
+                                    const assignees = Array.isArray(issue.assignees) ? issue.assignees : issue.assignee ? [issue.assignee] : [];
+                                    const shareTargets = assignees.length > 0 ? assignees : [note.author];
+                                    const shareCount = shareTargets.length;
+                                    const shareSeconds = deltaSeconds / shareCount;
+                                    for (const person of shareTargets) {
+                                          if (!person || !person.id) continue;
+                                          const uid = person.id;
+                                          if (!usersMap[uid]) {
+                                                usersMap[uid] = {
+                                                      userId: uid,
+                                                      username: person.username || '',
+                                                      name: person.name || '',
+                                                      avatar_url: person.avatar_url || '',
+                                                      dailySpent: 0,
+                                                };
+                                          }
+                                          usersMap[uid].dailySpent += shareSeconds;
                                     }
-                                    usersMap[uid].dailySpent += deltaSeconds;
                               }
                         }
                   }
@@ -1334,6 +1367,27 @@ function master1() {
                         return res.status(400).json({ message: 'پارامترهای users, from, to الزامی هستند' });
                   }
 
+                  // اگر کاربر عادی است، فقط داده‌های خودش را ببیند
+                  if (!req.auth.isAdmin && req.auth.gitlabUserId) {
+                        const currentUserId = req.auth.gitlabUserId;
+                        // اگر users شامل userId های دیگری است، خطا
+                        const requestedUserIds = String(users)
+                              .split(',')
+                              .map(s => s.trim())
+                              .filter(Boolean)
+                              .map(s => Number(s))
+                              .filter(n => !Number.isNaN(n));
+
+                        if (requestedUserIds.length > 0 && !requestedUserIds.includes(currentUserId)) {
+                              return res.status(403).json({ message: 'شما فقط می‌توانید داده‌های خودتان را مشاهده کنید' });
+                        }
+
+                        // اگر users مشخص نشده یا شامل userId فعلی نیست، خودکار تنظیم کن
+                        if (requestedUserIds.length === 0 || !requestedUserIds.includes(currentUserId)) {
+                              req.query.users = currentUserId.toString();
+                        }
+                  }
+
                   const userIds = String(users)
                         .split(',')
                         .map(s => s.trim())
@@ -1504,22 +1558,108 @@ function master1() {
                                                       }
                                                       if (seconds === 0) continue;
 
-                                                      if (!usersMap[authorId]) {
-                                                            usersMap[authorId] = {
-                                                                  userId: authorId,
-                                                                  username: note.author.username || '',
-                                                                  name: note.author.name || '',
-                                                                  avatar_url: note.author.avatar_url || '',
+                                                      // توزیع spend بین تمام assigneeها (هم‌راستا با totalSpent سراسری)
+                                                      const assigneesForShare = recipients.filter(p => p && userIds.includes(Number(p.id)));
+                                                      const shareCount = assigneesForShare.length || 1;
+                                                      const shareSeconds = seconds / shareCount;
+                                                      for (const person of assigneesForShare) {
+                                                            const uidShare = Number(person.id);
+                                                            if (!usersMap[uidShare]) {
+                                                                  usersMap[uidShare] = {
+                                                                        userId: uidShare,
+                                                                        username: person.username || note.author.username || '',
+                                                                        name: person.name || note.author.name || '',
+                                                                        avatar_url: person.avatar_url || note.author.avatar_url || '',
+                                                                        totalSpent: 0,
+                                                                        issues: {},
+                                                                        labels: new Set(),
+                                                                        byDate: {},
+                                                                  };
+                                                            }
+                                                            if (!usersMap[uidShare].issues[issue.iid]) {
+                                                                  usersMap[uidShare].issues[issue.iid] = {
+                                                                        iid: issue.iid,
+                                                                        title: issue.title,
+                                                                        state: issue.state,
+                                                                        labels: issue.labels,
+                                                                        time_stats: issue.time_stats,
+                                                                        milestone: issue.milestone,
+                                                                        created_at: issue.created_at,
+                                                                        updated_at: issue.updated_at,
+                                                                        spentInRange: 0,
+                                                                        commentsInRange: 0,
+                                                                        quality: {
+                                                                              hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                                                                              hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                                                                              labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                                                                              hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
+                                                                              estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                                                                              spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                                                                              spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
+                                                                              descriptionEditsInRange: 0,
+                                                                              largeOneOffSpends: [],
+                                                                        },
+                                                                  };
+                                                                  if (Array.isArray(issue.labels)) {
+                                                                        issue.labels.forEach(l => usersMap[uidShare].labels.add(l));
+                                                                  }
+                                                            }
+                                                            usersMap[uidShare].totalSpent -= shareSeconds;
+                                                            usersMap[uidShare].issues[issue.iid].spentInRange -= shareSeconds;
+                                                            usersMap[uidShare].byDate[fromDateKey] = (usersMap[uidShare].byDate[fromDateKey] || 0) - shareSeconds;
+                                                      }
+                                                      continue;
+                                                }
+
+                                                if (!isInRange(noteKey)) continue;
+                                                const isAdd = body.includes('added') && body.includes('time spent');
+                                                const isSub = body.includes('subtracted') && body.includes('time spent');
+                                                if (!isAdd && !isSub) continue;
+                                                let seconds = 0;
+                                                const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                                                let mm;
+                                                const H = 3600;
+                                                const D = 8 * H;
+                                                const W = 5 * D;
+                                                const MO = 4 * W;
+                                                // تلاش برای استخراج duration دقیق پس از added/subtracted
+                                                const addSubMatch = body.match(/(?:added|subtracted)\s+(.+?)\s+of\s+time\s+spent/i);
+                                                const parseSource = addSubMatch ? addSubMatch[1] : body;
+                                                while ((mm = unitRe.exec(parseSource)) !== null) {
+                                                      const val = parseInt(mm[1], 10);
+                                                      const unit = mm[2].toLowerCase();
+                                                      if (Number.isNaN(val)) continue;
+                                                      if (unit === 'mo') seconds += val * MO;
+                                                      else if (unit === 'w') seconds += val * W;
+                                                      else if (unit === 'd') seconds += val * D;
+                                                      else if (unit === 'h') seconds += val * H;
+                                                      else if (unit === 'm') seconds += val * 60;
+                                                      else if (unit === 's') seconds += val;
+                                                }
+                                                if (seconds === 0) continue;
+
+                                                // توزیع بین همه assigneeها
+                                                const assigneesForShare = recipients.filter(p => p && userIds.includes(Number(p.id)));
+                                                const shareCount = assigneesForShare.length || 1;
+                                                const delta = isSub ? -seconds : seconds;
+                                                const shareSeconds = delta / shareCount;
+                                                for (const person of assigneesForShare) {
+                                                      const uidShare = Number(person.id);
+                                                      if (!usersMap[uidShare]) {
+                                                            usersMap[uidShare] = {
+                                                                  userId: uidShare,
+                                                                  username: person.username || note.author.username || '',
+                                                                  name: person.name || note.author.name || '',
+                                                                  avatar_url: person.avatar_url || note.author.avatar_url || '',
                                                                   totalSpent: 0,
                                                                   issues: {},
                                                                   labels: new Set(),
                                                                   byDate: {},
+                                                                  spendAddLog: [],
                                                             };
                                                       }
-
-                                                      usersMap[authorId].totalSpent -= seconds;
-                                                      if (!usersMap[authorId].issues[issue.iid]) {
-                                                            usersMap[authorId].issues[issue.iid] = {
+                                                      if (!usersMap[uidShare].issues[issue.iid]) {
+                                                            usersMap[uidShare].issues[issue.iid] = {
                                                                   iid: issue.iid,
                                                                   title: issue.title,
                                                                   state: issue.state,
@@ -1543,100 +1683,27 @@ function master1() {
                                                                   },
                                                             };
                                                             if (Array.isArray(issue.labels)) {
-                                                                  issue.labels.forEach(l => usersMap[authorId].labels.add(l));
+                                                                  issue.labels.forEach(l => usersMap[uidShare].labels.add(l));
                                                             }
                                                       }
-                                                      usersMap[authorId].issues[issue.iid].spentInRange -= seconds;
+                                                      usersMap[uidShare].totalSpent += shareSeconds;
+                                                      usersMap[uidShare].issues[issue.iid].spentInRange += shareSeconds;
+                                                      usersMap[uidShare].byDate[noteKey] = (usersMap[uidShare].byDate[noteKey] || 0) + shareSeconds;
 
-                                                      usersMap[authorId].byDate[fromDateKey] = (usersMap[authorId].byDate[fromDateKey] || 0) - seconds;
-                                                      continue;
-                                                }
-
-                                                if (!isInRange(noteKey)) continue;
-                                                const isAdd = body.includes('added') && body.includes('time spent');
-                                                const isSub = body.includes('subtracted') && body.includes('time spent');
-                                                if (!isAdd && !isSub) continue;
-                                                let seconds = 0;
-                                                const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
-                                                let mm;
-                                                const H = 3600;
-                                                const D = 8 * H;
-                                                const W = 5 * D;
-                                                const MO = 4 * W;
-                                                while ((mm = unitRe.exec(body)) !== null) {
-                                                      const val = parseInt(mm[1], 10);
-                                                      const unit = mm[2].toLowerCase();
-                                                      if (Number.isNaN(val)) continue;
-                                                      if (unit === 'mo') seconds += val * MO;
-                                                      else if (unit === 'w') seconds += val * W;
-                                                      else if (unit === 'd') seconds += val * D;
-                                                      else if (unit === 'h') seconds += val * H;
-                                                      else if (unit === 'm') seconds += val * 60;
-                                                      else if (unit === 's') seconds += val;
-                                                }
-                                                if (seconds === 0) continue;
-
-                                                if (!usersMap[authorId]) {
-                                                      usersMap[authorId] = {
-                                                            userId: authorId,
-                                                            username: note.author.username || '',
-                                                            name: note.author.name || '',
-                                                            avatar_url: note.author.avatar_url || '',
-                                                            totalSpent: 0,
-                                                            issues: {},
-                                                            labels: new Set(),
-                                                            byDate: {},
-                                                            spendAddLog: [],
-                                                      };
-                                                }
-                                                usersMap[authorId].totalSpent += isSub ? -seconds : seconds;
-                                                if (!usersMap[authorId].issues[issue.iid]) {
-                                                      usersMap[authorId].issues[issue.iid] = {
-                                                            iid: issue.iid,
-                                                            title: issue.title,
-                                                            state: issue.state,
-                                                            labels: issue.labels,
-                                                            time_stats: issue.time_stats,
-                                                            milestone: issue.milestone,
-                                                            created_at: issue.created_at,
-                                                            updated_at: issue.updated_at,
-                                                            spentInRange: 0,
-                                                            commentsInRange: 0,
-                                                            quality: {
-                                                                  hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
-                                                                  hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
-                                                                  labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
-                                                                  hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
-                                                                  estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
-                                                                  spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
-                                                                  spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
-                                                                  descriptionEditsInRange: 0,
-                                                                  largeOneOffSpends: [],
-                                                            },
-                                                      };
-                                                      if (Array.isArray(issue.labels)) {
-                                                            issue.labels.forEach(l => usersMap[authorId].labels.add(l));
+                                                      if (isAdd && delta > 0) {
+                                                            if (!Array.isArray(usersMap[uidShare].spendAddLog)) usersMap[uidShare].spendAddLog = [];
+                                                            usersMap[uidShare].spendAddLog.push({
+                                                                  at: note.created_at,
+                                                                  seconds: shareSeconds,
+                                                                  issue_iid: issue.iid,
+                                                            });
                                                       }
-                                                }
-                                                usersMap[authorId].issues[issue.iid].spentInRange += isSub ? -seconds : seconds;
-
-                                                usersMap[authorId].byDate[noteKey] = (usersMap[authorId].byDate[noteKey] || 0) + (isSub ? -seconds : seconds);
-
-                                                // ثبت لاگ افزودن spend برای تحلیل افزایش‌های مشکوک
-                                                if (isAdd && seconds > 0) {
-                                                      if (!Array.isArray(usersMap[authorId].spendAddLog)) usersMap[authorId].spendAddLog = [];
-                                                      usersMap[authorId].spendAddLog.push({
-                                                            at: note.created_at,
-                                                            seconds,
-                                                            issue_iid: issue.iid,
-                                                      });
-                                                }
-
-                                                if (isAdd && seconds >= 8 * 3600) {
-                                                      usersMap[authorId].issues[issue.iid].quality.largeOneOffSpends.push({
-                                                            at: note.created_at,
-                                                            seconds,
-                                                      });
+                                                      if (isAdd && delta >= 8 * 3600) {
+                                                            usersMap[uidShare].issues[issue.iid].quality.largeOneOffSpends.push({
+                                                                  at: note.created_at,
+                                                                  seconds: shareSeconds,
+                                                            });
+                                                      }
                                                 }
                                           }
                                     }
@@ -2470,4 +2537,19 @@ function getProjectDisplayNameFromLabel(projectLabel) {
             return projectLabel.replace('Project:', '').trim();
       }
       return projectLabel;
+}
+
+async function fetchGitlabUsers() {
+      const response = await fetch(`${baseUUrl}/users`, {
+            method: 'GET',
+            headers: {
+                  'Content-Type': 'application/json',
+                  'PRIVATE-TOKEN': token,
+            },
+      });
+      if (!response.ok) {
+            throw new Error('Failed to fetch GitLab users');
+      }
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
 }
