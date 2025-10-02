@@ -1087,6 +1087,33 @@ function master1() {
                                                 if (!isAssignee) continue;
 
                                                 const raw = String(note.body);
+                                                // --- ثبت تغییرات لیبل ---
+                                                const labelAddMatch = raw.match(/added ~"(.+?)"/);
+                                                const labelRemoveMatch = raw.match(/removed ~"(.+?)"/);
+                                                if (labelAddMatch) {
+                                                    if (!usersMap[uid].issues[issue.iid]) continue;
+                                                    usersMap[uid].issues[issue.iid].activityLogs = usersMap[uid].issues[issue.iid].activityLogs || [];
+                                                    usersMap[uid].issues[issue.iid].activityLogs.push({
+                                                        type: 'label_added',
+                                                        at: note.created_at,
+                                                        by: uid,
+                                                        details: { label: labelAddMatch[1] },
+                                                        body: raw,
+                                                    });
+                                                }
+                                                if (labelRemoveMatch) {
+                                                    if (!usersMap[uid].issues[issue.iid]) continue;
+                                                    usersMap[uid].issues[issue.iid].activityLogs = usersMap[uid].issues[issue.iid].activityLogs || [];
+                                                    usersMap[uid].issues[issue.iid].activityLogs.push({
+                                                        type: 'label_removed',
+                                                        at: note.created_at,
+                                                        by: uid,
+                                                        details: { label: labelRemoveMatch[1] },
+                                                        body: raw,
+                                                    });
+                                                }
+                                                // --- پایان ثبت تغییرات لیبل ---
+
                                                 const m1 = raw.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
                                                 if (!m1) continue;
                                                 const duration = m1[1];
