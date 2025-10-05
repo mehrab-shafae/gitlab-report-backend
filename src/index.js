@@ -424,6 +424,7 @@ function master1() {
                               totalEstimate += shareEstimate;
                               const projectLabel = issue.labels.find(l => l.startsWith('Project: '));
                               if (!projectLabel) continue;
+                              const statusLabel = issue.labels.find(l => l.startsWith('Status: '));
 
                               if (!projectsMap[projectLabel]) {
                                     projectsMap[projectLabel] = {
@@ -437,6 +438,8 @@ function master1() {
 
                               projectsMap[projectLabel].totalSpent += shareSpent;
                               projectsMap[projectLabel].totalEstimate += shareEstimate;
+                              projectsMap[projectLabel].statusLabel = statusLabel;
+                              projectsMap[projectLabel].statusLabelName = getStatusDisplayNameFromLabel(statusLabel);
                         }
 
                         Object.values(projectsMap).forEach(proj => {
@@ -480,6 +483,8 @@ function master1() {
                               const shareEstimate = (issue.time_stats?.time_estimate || 0) / recipients.length;
 
                               const projectLabel = issue.labels.find(l => l.startsWith('Project: '));
+                              const statusLabel = issue.labels.find(l => l.startsWith('Status: '));
+
                               for (const person of recipients) {
                                     if (!person || !person.id) continue;
                                     const uid = person.id;
@@ -513,6 +518,8 @@ function master1() {
 
                                     usersMap[uid].projects[projectLabel].totalSpent += shareSpent;
                                     usersMap[uid].projects[projectLabel].totalEstimate += shareEstimate;
+                                    usersMap[uid].projects[projectLabel].statusLabel = statusLabel;
+                                    usersMap[uid].projects[projectLabel].statusLabelName = getStatusDisplayNameFromLabel(statusLabel);
                                     if (issue.iid) {
                                           usersMap[uid].projects[projectLabel].issueIds.push(issue.iid);
                                     }
@@ -2853,6 +2860,14 @@ function getProjectDisplayNameFromLabel(projectLabel) {
       if (typeof projectLabel !== 'string') return String(projectLabel || '');
       if (projectLabel.startsWith('Project:')) {
             return projectLabel.replace('Project:', '').trim();
+      }
+      return projectLabel;
+}
+
+function getStatusDisplayNameFromLabel(projectLabel) {
+      if (typeof projectLabel !== 'string') return String(projectLabel || '');
+      if (projectLabel.startsWith('Status:')) {
+            return projectLabel.replace('Status:', '').trim();
       }
       return projectLabel;
 }
