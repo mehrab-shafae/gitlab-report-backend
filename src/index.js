@@ -433,13 +433,16 @@ function master1() {
                                           totalSpent: 0,
                                           totalEstimate: 0,
                                           percentWork: 0,
+                                          status: { statusLabel: '', statusName: '' },
                                     };
                               }
 
                               projectsMap[projectLabel].totalSpent += shareSpent;
                               projectsMap[projectLabel].totalEstimate += shareEstimate;
-                              projectsMap[projectLabel].statusLabel = statusLabel;
-                              projectsMap[projectLabel].statusLabelName = getStatusDisplayNameFromLabel(statusLabel);
+                              projectsMap[projectLabel].status = {
+                                    statusLabel,
+                                    statusName: getStatusDisplayNameFromLabel(statusLabel),
+                              };
                         }
 
                         Object.values(projectsMap).forEach(proj => {
@@ -513,13 +516,16 @@ function master1() {
                                                 totalEstimate: 0,
                                                 percentWork: 0,
                                                 issueIds: [],
+                                                status: { statusLabel: '', statusName: '' },
                                           };
                                     }
 
                                     usersMap[uid].projects[projectLabel].totalSpent += shareSpent;
                                     usersMap[uid].projects[projectLabel].totalEstimate += shareEstimate;
-                                    usersMap[uid].projects[projectLabel].statusLabel = statusLabel;
-                                    usersMap[uid].projects[projectLabel].statusLabelName = getStatusDisplayNameFromLabel(statusLabel);
+                                    usersMap[uid].projects[projectLabel].status = {
+                                          statusLabel,
+                                          statusName: getStatusDisplayNameFromLabel(statusLabel),
+                                    };
                                     if (issue.iid) {
                                           usersMap[uid].projects[projectLabel].issueIds.push(issue.iid);
                                     }
@@ -1621,6 +1627,7 @@ function master1() {
                                                                         milestone: issue.milestone,
                                                                         created_at: issue.created_at,
                                                                         updated_at: issue.updated_at,
+                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                                         spentInRange: 0,
                                                                         commentsInRange: 0,
                                                                         quality: {
@@ -1703,6 +1710,7 @@ function master1() {
                                                                   milestone: issue.milestone,
                                                                   created_at: issue.created_at,
                                                                   updated_at: issue.updated_at,
+                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                                   spentInRange: 0,
                                                                   commentsInRange: 0,
                                                                   quality: {
@@ -1777,6 +1785,7 @@ function master1() {
                                                             milestone: issue.milestone,
                                                             created_at: issue.created_at,
                                                             updated_at: issue.updated_at,
+                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                             spentInRange: 0,
                                                             commentsInRange: 0,
                                                             quality: {
@@ -1844,6 +1853,7 @@ function master1() {
                                           time_stats: issue.time_stats,
                                           milestone: issue.milestone,
                                           updated_at: issue.updated_at,
+                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                           spentInRange: 0,
                                           commentsInRange: 0,
                                     };
@@ -1884,6 +1894,7 @@ function master1() {
                                           time_stats: issue.time_stats,
                                           milestone: issue.milestone,
                                           updated_at: issue.updated_at,
+                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                           spentInRange: 0,
                                           commentsInRange: 0,
                                     };
@@ -1915,6 +1926,7 @@ function master1() {
                         let healthyDays = 0;
                         let totalDays = daily.length;
                         let totalSpent = 0;
+                        let totalEstimate = 0;
                         let fakeDaysDetails = [];
 
                         // بررسی spend هر روز
@@ -1929,6 +1941,19 @@ function master1() {
                               } else if (d.spent > overworkSoft) {
                                     daysFake += 1;
                                     fakeDaysDetails.push({ date: d.date, spent: d.spent });
+                              }
+                        }
+
+                        // محاسبه estimate به ازای هر یوزر با تقسیم بین assigneeها
+                        for (const iss of Object.values(u.issues)) {
+                              const estimate = Number(iss?.time_stats?.time_estimate) || 0;
+                              if (estimate > 0) {
+                                    const assigned = Array.isArray(iss.assignedIds) ? iss.assignedIds : [];
+                                    const shareCount = assigned.length || 1;
+                                    const share = estimate / shareCount;
+                                    if (assigned.includes(Number(u.userId))) {
+                                          totalEstimate += share;
+                                    }
                               }
                         }
 
@@ -2013,6 +2038,7 @@ function master1() {
                         u.fakeDaysDetails = fakeDaysDetails;
                         u.largeOneOffSpendsCount = largeOneOffSpendsCount;
                         u.totalSpent = totalSpent;
+                        u.totalEstimate = totalEstimate;
                         u.dailySummary = daily.map(d => ({
                               date: d.date,
                               spent: d.spent,
@@ -2127,6 +2153,8 @@ function master1() {
                               largeOneOffSpendsCount: u.largeOneOffSpendsCount,
                               suspiciousIncrementCount: suspiciousIncrementCount,
                               totalSpent: u.totalSpent,
+                              totalEstimate: u.totalEstimate,
+                              spentToEstimate: u.totalEstimate > 0 ? Number((u.totalSpent / u.totalEstimate).toFixed(2)) : null,
                               avgDailySpent: u.totalDays > 0 ? Math.round(u.totalSpent / u.totalDays) : 0,
                               realnessPercent: u.realnessPercent,
                               suspiciousIssueCount: u.suspiciousIssueCount,
@@ -2450,6 +2478,8 @@ function master1() {
                               { header: 'Username', key: 'username', width: 20 },
                               { header: 'Name', key: 'name', width: 24 },
                               { header: 'Total Spent (h)', key: 'totalSpentH', width: 16 },
+                              { header: 'Total Estimate (h)', key: 'totalEstimateH', width: 18 },
+                              { header: 'Spent/Estimate', key: 'spentToEstimate', width: 16 },
                               { header: 'Realness', key: 'realness', width: 12 },
                               { header: 'Quality', key: 'quality', width: 12 },
                               { header: 'Absence', key: 'absence', width: 12 },
@@ -2462,6 +2492,8 @@ function master1() {
                                     username: u.username,
                                     name: u.name,
                                     totalSpentH: ((u.summary?.totalSpent || 0) / 3600).toFixed(2),
+                                    totalEstimateH: ((u.summary?.totalEstimate || 0) / 3600).toFixed(2),
+                                    spentToEstimate: u.summary?.spentToEstimate ?? '',
                                     realness: s.realness ?? '',
                                     quality: s.quality ?? '',
                                     absence: s.absence ?? '',
@@ -2684,10 +2716,12 @@ function master1() {
                               wsSummary.addRow({ name: 'Totals/Averages:' });
                               // totalSpentH sum, others average
                               wsSummary.getCell(`D${lastSummaryRow}`).value = { formula: `SUM(D2:D${lastSummaryRow - 1})` };
-                              wsSummary.getCell(`E${lastSummaryRow}`).value = { formula: `AVERAGE(E2:E${lastSummaryRow - 1})` };
-                              wsSummary.getCell(`F${lastSummaryRow}`).value = { formula: `AVERAGE(F2:F${lastSummaryRow - 1})` };
+                              wsSummary.getCell(`E${lastSummaryRow}`).value = { formula: `SUM(E2:E${lastSummaryRow - 1})` };
+                              // Spent/Estimate average
                               wsSummary.getCell(`G${lastSummaryRow}`).value = { formula: `AVERAGE(G2:G${lastSummaryRow - 1})` };
                               wsSummary.getCell(`H${lastSummaryRow}`).value = { formula: `AVERAGE(H2:H${lastSummaryRow - 1})` };
+                              wsSummary.getCell(`I${lastSummaryRow}`).value = { formula: `AVERAGE(I2:I${lastSummaryRow - 1})` };
+                              wsSummary.getCell(`J${lastSummaryRow}`).value = { formula: `AVERAGE(J2:J${lastSummaryRow - 1})` };
                               wsSummary.getRow(lastSummaryRow).font = { bold: true };
 
                               // Issues totals
