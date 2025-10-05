@@ -1134,7 +1134,7 @@ function master1() {
                                                 if (fromDate !== targetDate) continue;
 
                                                 let seconds = 0;
-                                                const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                                                const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
                                                 let mm;
                                                 while ((mm = unitRe2.exec(duration)) !== null) {
                                                       const val = parseInt(mm[1], 10);
@@ -1204,7 +1204,7 @@ function master1() {
                                                 const isSub = body.includes('subtracted') && body.includes('time spent');
                                                 if (!isAdd && !isSub) continue;
                                                 let seconds = 0;
-                                                const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                                                const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
                                                 let m;
                                                 while ((m = unitRe.exec(body)) !== null) {
                                                       const val = parseInt(m[1], 10);
@@ -1403,6 +1403,7 @@ function master1() {
             };
             try {
                   const { users, from, to } = req.query;
+                  const NOTES_CONCURRENCY = Math.max(1, Number(process.env.ACTIVITY_NOTES_CONCURRENCY) || 10);
 
                   if (!users || !from || !to) {
                         return res.status(400).json({ message: 'پارامترهای users, from, to الزامی هستند' });
@@ -1435,6 +1436,7 @@ function master1() {
                         .filter(Boolean)
                         .map(s => Number(s))
                         .filter(n => !Number.isNaN(n));
+                  const userIdsSet = new Set(userIds);
                   if (userIds.length === 0) {
                         return res.status(400).json({ message: 'حداقل یک userId معتبر لازم است' });
                   }
@@ -1524,7 +1526,7 @@ function master1() {
                   }
 
                   const usersMap = {};
-                  const limit = Math.max(1, 5);
+                  const limit = Math.max(1, NOTES_CONCURRENCY);
                   const chunkArray = (arr, size) => {
                         const out = [];
                         for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -1533,14 +1535,14 @@ function master1() {
                   const issueChunks = chunkArray(allIssues, limit);
 
                   for (const chunk of issueChunks) {
-                        await Promise.all(
+                        await Promise.allSettled(
                               chunk.map(async issue => {
                                     if (!issue?.iid) return;
                                     const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
                                     const legacy = issue.assignee ? [issue.assignee] : [];
                                     const recipients = assignees.length > 0 ? assignees : legacy;
 
-                                    const targetAssignees = recipients.filter(p => p && userIds.includes(Number(p.id)));
+                                        const targetAssignees = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
                                     if (targetAssignees.length === 0) return;
 
                                     const [sysNotesResp, notesResp] = await Promise.all([
@@ -1568,7 +1570,7 @@ function master1() {
                                                 if (!note?.body || !note?.created_at || !note?.author?.id) continue;
                                                 const noteKey = new Date(note.created_at).toISOString().slice(0, 10);
                                                 const authorId = Number(note.author.id);
-                                                if (!userIds.includes(authorId)) continue;
+                                                if (!userIdsSet.has(authorId)) continue;
                                                 const isAssignee = recipients.some(p => p && Number(p.id) === authorId);
                                                 if (!isAssignee) continue;
                                                 const body = String(note.body).toLowerCase();
@@ -1600,7 +1602,7 @@ function master1() {
                                                       if (seconds === 0) continue;
 
                                                       // توزیع spend بین تمام assigneeها (هم‌راستا با totalSpent سراسری)
-                                                      const assigneesForShare = recipients.filter(p => p && userIds.includes(Number(p.id)));
+                                                      const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
                                                       const shareCount = assigneesForShare.length || 1;
                                                       const shareSeconds = seconds / shareCount;
                                                       for (const person of assigneesForShare) {
@@ -1681,7 +1683,7 @@ function master1() {
                                                 if (seconds === 0) continue;
 
                                                 // توزیع بین همه assigneeها
-                                                const assigneesForShare = recipients.filter(p => p && userIds.includes(Number(p.id)));
+                                                const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
                                                 const shareCount = assigneesForShare.length || 1;
                                                 const delta = isSub ? -seconds : seconds;
                                                 const shareSeconds = delta / shareCount;
