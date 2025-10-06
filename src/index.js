@@ -574,8 +574,8 @@ function master1() {
                   const parseSpentFromNote = body => {
                         if (typeof body !== 'string') return { seconds: 0, forDate: null };
                         const lowered = body.toLowerCase();
-
-                        const del = lowered.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+                        // support deleted/removed, and both "spent time" and "time spent", with optional date keywords
+                        const del = lowered.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
                         const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
                         const H = 3600;
                         const D = 8 * H;
@@ -599,13 +599,13 @@ function master1() {
                               }
                               return { seconds: -seconds, forDate };
                         }
-                        const isAdd = lowered.includes('added') && lowered.includes('time spent');
-                        const isSub = lowered.includes('subtracted') && lowered.includes('time spent');
+                        const isAdd = lowered.includes('added') && (lowered.includes('time spent') || lowered.includes('spent time'));
+                        const isSub = (lowered.includes('subtracted') || lowered.includes('removed') || lowered.includes('deleted')) && (lowered.includes('time spent') || lowered.includes('spent time'));
                         if (!isAdd && !isSub) return { seconds: 0, forDate: null };
                         let seconds = 0;
                         let mm;
-                        // استخراج duration دقیق پس از added/subtracted
-                        const addSubMatch = lowered.match(/(?:added|subtracted)\s+(.+?)\s+of\s+time\s+spent/i);
+                        // استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
+                        const addSubMatch = lowered.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
                         const parseSource = addSubMatch ? addSubMatch[1] : lowered;
                         while ((mm = unitRe.exec(parseSource)) !== null) {
                               const val = parseInt(mm[1], 10);
@@ -857,7 +857,7 @@ function master1() {
                         const W = 5 * D;
                         const MO = 4 * W;
 
-                        const del = lowered.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+                        const del = lowered.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
                         if (del) {
                               const duration = del[1];
                               const forDate = del[2];
@@ -876,13 +876,13 @@ function master1() {
                               }
                               return { seconds: -seconds, forDate };
                         }
-                        const isAdd = lowered.includes('added') && lowered.includes('time spent');
-                        const isSub = lowered.includes('subtracted') && lowered.includes('time spent');
+                        const isAdd = lowered.includes('added') && (lowered.includes('time spent') || lowered.includes('spent time'));
+                        const isSub = (lowered.includes('subtracted') || lowered.includes('removed') || lowered.includes('deleted')) && (lowered.includes('time spent') || lowered.includes('spent time'));
                         if (!isAdd && !isSub) return { seconds: 0, forDate: null };
                         let seconds = 0;
                         let mm;
-                        // استخراج duration دقیق پس از added/subtracted
-                        const addSubMatch = lowered.match(/(?:added|subtracted)\s+(.+?)\s+of\s+time\s+spent/i);
+                        // استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
+                        const addSubMatch = lowered.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
                         const parseSource = addSubMatch ? addSubMatch[1] : lowered;
                         while ((mm = unitRe.exec(parseSource)) !== null) {
                               const val = parseInt(mm[1], 10);
@@ -1127,7 +1127,7 @@ function master1() {
                                                 }
                                                 // --- پایان ثبت تغییرات لیبل ---
 
-                                                const m1 = raw.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+                                                const m1 = raw.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
                                                 if (!m1) continue;
                                                 const duration = m1[1];
                                                 const fromDate = m1[2];
@@ -1200,13 +1200,78 @@ function master1() {
                                                 const noteDate = new Date(note.created_at).toISOString().slice(0, 10);
                                                 if (noteDate !== targetDate) continue;
                                                 const body = String(note.body).toLowerCase();
-                                                const isAdd = body.includes('added') && body.includes('time spent');
-                                                const isSub = body.includes('subtracted') && body.includes('time spent');
+
+                                                // --- handle slash commands removals without explicit amounts ---
+                                                // remove_time_spent: "removed time spent" → zero out all spent for this issue for involved assignees
+                                                if (/\bremoved\s+(?:all\s+)?(?:time\s+spent|spent\s+time)\b/i.test(body)) {
+                                                      const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
+                                                      const shareCount = assigneesForShare.length || 1;
+                                                      try {
+                                                            console.log('[activity-range][parse][remove_time_spent]', {
+                                                                  iid: issue.iid,
+                                                                  at: note.created_at,
+                                                                  author: authorId,
+                                                                  shareCount,
+                                                                  dateKey: noteKey,
+                                                            });
+                                                      } catch (e) {}
+                                                      for (const person of assigneesForShare) {
+                                                            const uidShare = Number(person.id);
+                                                            if (!usersMap[uidShare]) continue;
+                                                            if (!usersMap[uidShare].issues[issue.iid]) continue;
+                                                            const current = Number(usersMap[uidShare].issues[issue.iid].spentInRange) || 0;
+                                                            if (current === 0) continue;
+                                                            usersMap[uidShare].issues[issue.iid].spentInRange = 0;
+                                                            usersMap[uidShare].totalSpent -= current;
+                                                            usersMap[uidShare].byDate[noteKey] = (usersMap[uidShare].byDate[noteKey] || 0) - current;
+                                                            try {
+                                                                  console.log('[activity-range][apply][remove_time_spent]', {
+                                                                        userId: uidShare,
+                                                                        iid: issue.iid,
+                                                                        dateKey: noteKey,
+                                                                        delta: -current,
+                                                                        totalSpent: usersMap[uidShare].totalSpent,
+                                                                  });
+                                                            } catch (e) {}
+                                                      }
+                                                      continue;
+                                                }
+
+                                                // remove_estimate: "removed time estimate" → zero out estimate for this issue
+                                                if (/\bremoved\s+(?:time\s+estimate|estimate)\b/i.test(body)) {
+                                                      try {
+                                                            if (issue && issue.time_stats) {
+                                                                  issue.time_stats.time_estimate = 0;
+                                                            }
+                                                            if (usersMap[authorId] && usersMap[authorId].issues[issue.iid] && usersMap[authorId].issues[issue.iid].time_stats) {
+                                                                  usersMap[authorId].issues[issue.iid].time_stats.time_estimate = 0;
+                                                            }
+                                                            console.log('[activity-range][apply][remove_estimate]', { iid: issue.iid, at: note.created_at, author: authorId });
+                                                      } catch (e) {}
+                                                      // do not continue; other patterns might also apply, but typically it's only estimate removal
+                                                }
+
+                                                // remove_milestone: "removed milestone" → clear milestone
+                                                if (/\bremoved\s+milestone\b/i.test(body)) {
+                                                      try {
+                                                            if (issue) issue.milestone = null;
+                                                            if (usersMap[authorId] && usersMap[authorId].issues[issue.iid]) {
+                                                                  usersMap[authorId].issues[issue.iid].milestone = null;
+                                                            }
+                                                            console.log('[activity-range][apply][remove_milestone]', { iid: issue.iid, at: note.created_at, author: authorId });
+                                                      } catch (e) {}
+                                                      // continue processing others
+                                                }
+                                                const isAdd = body.includes('added') && (body.includes('time spent') || body.includes('spent time'));
+                                                const isSub = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && (body.includes('time spent') || body.includes('spent time'));
                                                 if (!isAdd && !isSub) continue;
                                                 let seconds = 0;
                                                 const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
                                                 let m;
-                                                while ((m = unitRe.exec(body)) !== null) {
+                                                // تلاش برای استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
+                                                const addSubMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
+                                                const parseSource = addSubMatch ? addSubMatch[1] : body;
+                                                while ((m = unitRe.exec(parseSource)) !== null) {
                                                       const val = parseInt(m[1], 10);
                                                       const unit = m[2].toLowerCase();
                                                       if (Number.isNaN(val)) continue;
@@ -1525,6 +1590,13 @@ function master1() {
                         }
                   }
 
+                  try {
+                        console.log('[activity-range][pre] users:', userIds.join(','), 'range:', startKey, 'to', endKey);
+                        console.log('[activity-range][pre] fetched issues count:', allIssues.length);
+                        const sampleIssueIds = allIssues.slice(0, 10).map(it => it && it.iid).filter(Boolean);
+                        console.log('[activity-range][pre] sample issue IIDs:', sampleIssueIds.join(', '));
+                  } catch (e) {}
+
                   const usersMap = {};
                   const limit = Math.max(1, NOTES_CONCURRENCY);
                   const chunkArray = (arr, size) => {
@@ -1544,6 +1616,10 @@ function master1() {
 
                                         const targetAssignees = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
                                     if (targetAssignees.length === 0) return;
+
+                                    try {
+                                          console.log('[activity-range][issue] iid=', issue.iid, 'assignees=', recipients.map(p => p && p.id).filter(Boolean).join(','));
+                                    } catch (e) {}
 
                                     const [sysNotesResp, notesResp] = await Promise.all([
                                           fetch(`${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`, {
@@ -1566,16 +1642,61 @@ function master1() {
 
                                     if (sysNotesResp.ok) {
                                           const notes = await sysNotesResp.json();
+                                          try {
+                                                console.log('[activity-range][notes][system] iid=', issue.iid, 'count=', Array.isArray(notes) ? notes.length : 0);
+                                          } catch (e) {}
                                           for (const note of notes) {
                                                 if (!note?.body || !note?.created_at || !note?.author?.id) continue;
                                                 const noteKey = new Date(note.created_at).toISOString().slice(0, 10);
                                                 const authorId = Number(note.author.id);
+                                                const body = String(note.body).toLowerCase();
+
+                                                // --- special-case: remove_time_spent (no amount, clears all spent) ---
+                                                if (/\bremoved\s+(?:all\s+)?(?:time\s+spent|spent\s+time)\b/i.test(body)) {
+                                                      const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
+                                                      try {
+                                                            console.log('[activity-range][parse][remove_time_spent][pre-author-check]', {
+                                                                  iid: issue.iid,
+                                                                  at: note.created_at,
+                                                                  author: authorId,
+                                                                  shareCount: assigneesForShare.length,
+                                                            });
+                                                      } catch (e) {}
+                                                      for (const person of assigneesForShare) {
+                                                            const uidShare = Number(person.id);
+                                                            const uRec = usersMap[uidShare];
+                                                            if (!uRec) continue;
+                                                            const issRec = uRec.issues && uRec.issues[issue.iid];
+                                                            if (!issRec) continue;
+                                                            const currentTotal = Number(issRec.spentInRange) || 0;
+                                                            if (currentTotal === 0) continue;
+                                                            // subtract per-day amounts tracked on the issue
+                                                            const perDay = issRec.byDate || {};
+                                                            for (const [dkey, val] of Object.entries(perDay)) {
+                                                                  if (typeof val === 'number' && val !== 0) {
+                                                                        uRec.byDate[dkey] = (uRec.byDate[dkey] || 0) - val;
+                                                                  }
+                                                            }
+                                                            uRec.totalSpent -= currentTotal;
+                                                            issRec.spentInRange = 0;
+                                                            issRec.byDate = {};
+                                                            try {
+                                                                  console.log('[activity-range][apply][remove_time_spent][per-issue-clear]', {
+                                                                        userId: uidShare,
+                                                                        iid: issue.iid,
+                                                                        delta: -currentTotal,
+                                                                        totalSpent: uRec.totalSpent,
+                                                                  });
+                                                            } catch (e) {}
+                                                      }
+                                                      continue;
+                                                }
+
                                                 if (!userIdsSet.has(authorId)) continue;
                                                 const isAssignee = recipients.some(p => p && Number(p.id) === authorId);
                                                 if (!isAssignee) continue;
-                                                const body = String(note.body).toLowerCase();
 
-                                                const delMatch = body.match(/deleted\s+(.+?)\s+of\s+spent\s+time\s+from\s+(\d{4}-\d{2}-\d{2})/i);
+                                                const delMatch = body.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
                                                 if (delMatch) {
                                                       const duration = delMatch[1];
                                                       const fromDateKey = delMatch[2];
@@ -1605,6 +1726,18 @@ function master1() {
                                                       const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
                                                       const shareCount = assigneesForShare.length || 1;
                                                       const shareSeconds = seconds / shareCount;
+                                                      try {
+                                                            console.log('[activity-range][parse][delete]', {
+                                                                  iid: issue.iid,
+                                                                  at: note.created_at,
+                                                                  author: authorId,
+                                                                  duration,
+                                                                  seconds,
+                                                                  shareCount,
+                                                                  shareSeconds,
+                                                                  forDate: fromDateKey,
+                                                            });
+                                                      } catch (e) {}
                                                       for (const person of assigneesForShare) {
                                                             const uidShare = Number(person.id);
                                                             if (!usersMap[uidShare]) {
@@ -1632,6 +1765,7 @@ function master1() {
                                                               assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                                         spentInRange: 0,
                                                                         commentsInRange: 0,
+                                                                          byDate: {},
                                                                         quality: {
                                                                               hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
                                                                               hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
@@ -1651,13 +1785,23 @@ function master1() {
                                                             usersMap[uidShare].totalSpent -= shareSeconds;
                                                             usersMap[uidShare].issues[issue.iid].spentInRange -= shareSeconds;
                                                             usersMap[uidShare].byDate[fromDateKey] = (usersMap[uidShare].byDate[fromDateKey] || 0) - shareSeconds;
+                                                            usersMap[uidShare].issues[issue.iid].byDate[fromDateKey] = (usersMap[uidShare].issues[issue.iid].byDate[fromDateKey] || 0) - shareSeconds;
+                                                            try {
+                                                                  console.log('[activity-range][apply][delete]', {
+                                                                        userId: uidShare,
+                                                                        iid: issue.iid,
+                                                                        forDate: fromDateKey,
+                                                                        delta: -shareSeconds,
+                                                                        totalSpent: usersMap[uidShare].totalSpent,
+                                                                  });
+                                                            } catch (e) {}
                                                       }
                                                       continue;
                                                 }
 
                                                 if (!isInRange(noteKey)) continue;
-                                                const isAdd = body.includes('added') && body.includes('time spent');
-                                                const isSub = body.includes('subtracted') && body.includes('time spent');
+                                                const isAdd = body.includes('added') && (body.includes('time spent') || body.includes('spent time'));
+                                                const isSub = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && (body.includes('time spent') || body.includes('spent time'));
                                                 if (!isAdd && !isSub) continue;
                                                 let seconds = 0;
                                                 const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
@@ -1666,8 +1810,8 @@ function master1() {
                                                 const D = 8 * H;
                                                 const W = 5 * D;
                                                 const MO = 4 * W;
-                                                // تلاش برای استخراج duration دقیق پس از added/subtracted
-                                                const addSubMatch = body.match(/(?:added|subtracted)\s+(.+?)\s+of\s+time\s+spent/i);
+                                                // تلاش برای استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
+                                                const addSubMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
                                                 const parseSource = addSubMatch ? addSubMatch[1] : body;
                                                 while ((mm = unitRe.exec(parseSource)) !== null) {
                                                       const val = parseInt(mm[1], 10);
@@ -1687,6 +1831,20 @@ function master1() {
                                                 const shareCount = assigneesForShare.length || 1;
                                                 const delta = isSub ? -seconds : seconds;
                                                 const shareSeconds = delta / shareCount;
+                                                try {
+                                                      console.log('[activity-range][parse][change]', {
+                                                            iid: issue.iid,
+                                                            at: note.created_at,
+                                                            author: authorId,
+                                                            isAdd,
+                                                            isSub,
+                                                            seconds,
+                                                            delta,
+                                                            shareCount,
+                                                            shareSeconds,
+                                                            dateKey: noteKey,
+                                                      });
+                                                } catch (e) {}
                                                 for (const person of assigneesForShare) {
                                                       const uidShare = Number(person.id);
                                                       if (!usersMap[uidShare]) {
@@ -1715,6 +1873,7 @@ function master1() {
                                                               assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                                   spentInRange: 0,
                                                                   commentsInRange: 0,
+                                                                  byDate: {},
                                                                   quality: {
                                                                         hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
                                                                         hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
@@ -1734,6 +1893,23 @@ function master1() {
                                                       usersMap[uidShare].totalSpent += shareSeconds;
                                                       usersMap[uidShare].issues[issue.iid].spentInRange += shareSeconds;
                                                       usersMap[uidShare].byDate[noteKey] = (usersMap[uidShare].byDate[noteKey] || 0) + shareSeconds;
+                                                      usersMap[uidShare].issues[issue.iid].byDate[noteKey] = (usersMap[uidShare].issues[issue.iid].byDate[noteKey] || 0) + shareSeconds;
+                                                      if (isAdd && delta >= 8 * 3600) {
+                                                            usersMap[uidShare].issues[issue.iid].quality.largeOneOffSpends.push({
+                                                                  at: note.created_at,
+                                                                  seconds: shareSeconds,
+                                                                  dateKey: noteKey,
+                                                            });
+                                                      }
+                                                      try {
+                                                            console.log('[activity-range][apply][change]', {
+                                                                  userId: uidShare,
+                                                                  iid: issue.iid,
+                                                                  dateKey: noteKey,
+                                                                  delta: shareSeconds,
+                                                                  totalSpent: usersMap[uidShare].totalSpent,
+                                                            });
+                                                      } catch (e) {}
 
                                                       if (isAdd && delta > 0) {
                                                             if (!Array.isArray(usersMap[uidShare].spendAddLog)) usersMap[uidShare].spendAddLog = [];
@@ -1755,6 +1931,9 @@ function master1() {
 
                                     if (notesResp.ok) {
                                           const notes = await notesResp.json();
+                                          try {
+                                                console.log('[activity-range][notes][user] iid=', issue.iid, 'count=', Array.isArray(notes) ? notes.length : 0);
+                                          } catch (e) {}
                                           for (const note of notes) {
                                                 if (note?.system) continue;
                                                 if (!note?.created_at || !note?.author?.id) continue;
@@ -1908,15 +2087,32 @@ function master1() {
                   }
 
                   for (const u of Object.values(usersMap)) {
+                        try {
+                              const byDatePreview = Object.entries(u.byDate || {}).slice(0, 10);
+                              console.log('[activity-range][aggregate][user]', {
+                                    userId: u.userId,
+                                    username: u.username,
+                                    totalIssues: Object.keys(u.issues || {}).length,
+                                    totalSpentPreview: Object.values(u.byDate || {}).reduce((a, b) => a + b, 0),
+                                    byDatePreview,
+                              });
+                        } catch (e) {}
                         let totalIssueCount = 0;
                         let realnessSum = 0;
                         let suspiciousIssueCount = 0;
 
                         const dailyKeys = Object.keys(u.byDate || {}).sort();
-                        const daily = dailyKeys.map(k => ({
-                              date: k,
-                              spent: u.byDate[k] || 0,
-                        }));
+                        const daily = dailyKeys.map(k => {
+                              const issuesArr = Object.values(u.issues || {})
+                                    .map(iss => ({ iid: iss.iid, spent: (iss.byDate && iss.byDate[k]) || 0 }))
+                                    .filter(x => x.spent !== 0);
+                              return {
+                                    date: k,
+                                    spent: u.byDate[k] || 0,
+                                    issues: issuesArr,
+                                    issueIids: issuesArr.map(it => it.iid),
+                              };
+                        });
                         const H = 3600;
                         const targetMin = 7 * H;
                         const targetMax = 8 * H;
@@ -2045,6 +2241,8 @@ function master1() {
                               date: d.date,
                               spent: d.spent,
                               spent_hm: `${Math.floor(d.spent / 3600)}h ${Math.floor((d.spent % 3600) / 60)}m`,
+                              issues: d.issues,
+                              issueIids: d.issueIids,
                         }));
                         // --- شاخص‌های جدید quality برای هر ایشو ---
                         for (const iss of Object.values(u.issues)) {
@@ -2167,6 +2365,7 @@ function master1() {
                                     medium: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.5 && iss.quality?.qualityScore < 0.8).length,
                                     weak: Object.values(u.issues).filter(iss => iss.quality?.qualityScore < 0.5).length,
                               },
+                              largeOneOffSpends: Object.values(u.issues).flatMap(iss => (iss.quality?.largeOneOffSpends || []).map(s => ({ iid: iss.iid, at: s.at, seconds: s.seconds, dateKey: s.dateKey }))),
                         };
                         // --- trend و پیام راهنما برای هر یوزر ---
                         let guidance = [];
