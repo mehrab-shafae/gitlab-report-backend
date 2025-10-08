@@ -1104,26 +1104,26 @@ function master1() {
                                                 const labelAddMatch = raw.match(/added ~"(.+?)"/);
                                                 const labelRemoveMatch = raw.match(/removed ~"(.+?)"/);
                                                 if (labelAddMatch) {
-                                                    if (!usersMap[uid].issues[issue.iid]) continue;
-                                                    usersMap[uid].issues[issue.iid].activityLogs = usersMap[uid].issues[issue.iid].activityLogs || [];
-                                                    usersMap[uid].issues[issue.iid].activityLogs.push({
-                                                        type: 'label_added',
-                                                        at: note.created_at,
-                                                        by: uid,
-                                                        details: { label: labelAddMatch[1] },
-                                                        body: raw,
-                                                    });
+                                                      if (!usersMap[uid].issues[issue.iid]) continue;
+                                                      usersMap[uid].issues[issue.iid].activityLogs = usersMap[uid].issues[issue.iid].activityLogs || [];
+                                                      usersMap[uid].issues[issue.iid].activityLogs.push({
+                                                            type: 'label_added',
+                                                            at: note.created_at,
+                                                            by: uid,
+                                                            details: { label: labelAddMatch[1] },
+                                                            body: raw,
+                                                      });
                                                 }
                                                 if (labelRemoveMatch) {
-                                                    if (!usersMap[uid].issues[issue.iid]) continue;
-                                                    usersMap[uid].issues[issue.iid].activityLogs = usersMap[uid].issues[issue.iid].activityLogs || [];
-                                                    usersMap[uid].issues[issue.iid].activityLogs.push({
-                                                        type: 'label_removed',
-                                                        at: note.created_at,
-                                                        by: uid,
-                                                        details: { label: labelRemoveMatch[1] },
-                                                        body: raw,
-                                                    });
+                                                      if (!usersMap[uid].issues[issue.iid]) continue;
+                                                      usersMap[uid].issues[issue.iid].activityLogs = usersMap[uid].issues[issue.iid].activityLogs || [];
+                                                      usersMap[uid].issues[issue.iid].activityLogs.push({
+                                                            type: 'label_removed',
+                                                            at: note.created_at,
+                                                            by: uid,
+                                                            details: { label: labelRemoveMatch[1] },
+                                                            body: raw,
+                                                      });
                                                 }
                                                 // --- پایان ثبت تغییرات لیبل ---
 
@@ -1528,11 +1528,14 @@ function master1() {
                   const endKey = toKey(toDate);
                   const isInRange = isoDate => isoDate >= startKey && isoDate <= endKey;
                   // --- configurable working days ---
-                  const parseWorkdays = (input) => {
+                  const parseWorkdays = input => {
                         // Accept: comma-separated of numbers 0..6 (Sun..Sat) or names mon,tue,...
                         const nameToNum = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
                         if (!input) return new Set([1, 2, 3, 4, 5]); // default Mon-Fri
-                        const parts = String(input).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+                        const parts = String(input)
+                              .split(',')
+                              .map(s => s.trim().toLowerCase())
+                              .filter(Boolean);
                         const out = new Set();
                         for (const p of parts) {
                               if (/^\d+$/.test(p)) {
@@ -1641,7 +1644,10 @@ function master1() {
                   try {
                         console.log('[activity-range][pre] users:', userIds.join(','), 'range:', startKey, 'to', endKey);
                         console.log('[activity-range][pre] fetched issues count:', allIssues.length);
-                        const sampleIssueIds = allIssues.slice(0, 10).map(it => it && it.iid).filter(Boolean);
+                        const sampleIssueIds = allIssues
+                              .slice(0, 10)
+                              .map(it => it && it.iid)
+                              .filter(Boolean);
                         console.log('[activity-range][pre] sample issue IIDs:', sampleIssueIds.join(', '));
                   } catch (e) {}
 
@@ -1662,15 +1668,23 @@ function master1() {
                                     const legacy = issue.assignee ? [issue.assignee] : [];
                                     const recipients = assignees.length > 0 ? assignees : legacy;
 
-                                        const targetAssignees = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
+                                    const targetAssignees = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
                                     if (targetAssignees.length === 0) return;
 
                                     try {
-                                          console.log('[activity-range][issue] iid=', issue.iid, 'assignees=', recipients.map(p => p && p.id).filter(Boolean).join(','));
+                                          console.log(
+                                                '[activity-range][issue] iid=',
+                                                issue.iid,
+                                                'assignees=',
+                                                recipients
+                                                      .map(p => p && p.id)
+                                                      .filter(Boolean)
+                                                      .join(',')
+                                          );
                                     } catch (e) {}
 
                                     // paginate system notes
-                                    const fetchAllNotes = async (systemFlag) => {
+                                    const fetchAllNotes = async systemFlag => {
                                           let page = 1;
                                           const out = [];
                                           while (true) {
@@ -1694,10 +1708,7 @@ function master1() {
                                           return out;
                                     };
 
-                                    const [sysNotes, userNotes] = await Promise.all([
-                                          fetchAllNotes(true),
-                                          fetchAllNotes(false),
-                                    ]);
+                                    const [sysNotes, userNotes] = await Promise.all([fetchAllNotes(true), fetchAllNotes(false)]);
 
                                     if (Array.isArray(sysNotes)) {
                                           const notes = [...sysNotes].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -1828,12 +1839,12 @@ function master1() {
                                                                         milestone: issue.milestone,
                                                                         created_at: issue.created_at,
                                                                         updated_at: issue.updated_at,
-                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                                                        assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                                         spentInRange: 0,
-                                                          estimateInRange: 0,
+                                                                        estimateInRange: 0,
                                                                         commentsInRange: 0,
-                                                                          byDate: {},
-                                                          estimateByDate: {},
+                                                                        byDate: {},
+                                                                        estimateByDate: {},
                                                                         quality: {
                                                                               hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
                                                                               hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
@@ -1845,7 +1856,7 @@ function master1() {
                                                                               descriptionEditsInRange: 0,
                                                                               largeOneOffSpends: [],
                                                                         },
-                                                          estimateCurrent: 0,
+                                                                        estimateCurrent: 0,
                                                                   };
                                                                   if (Array.isArray(issue.labels)) {
                                                                         issue.labels.forEach(l => usersMap[uidShare].labels.add(l));
@@ -1951,7 +1962,7 @@ function master1() {
                                                                   milestone: issue.milestone,
                                                                   created_at: issue.created_at,
                                                                   updated_at: issue.updated_at,
-                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                                                  assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                                   spentInRange: 0,
                                                                   commentsInRange: 0,
                                                                   byDate: {},
@@ -2008,191 +2019,196 @@ function master1() {
                                                             });
                                                       }
                                                 }
-                                          // --- time estimate changes ---
-                                          {
-                                              const noteKey = toKey(note.created_at);
-                                              const body = String(note.body).toLowerCase();
-                                              const authorId = Number(note.author.id);
-                                              // remove all estimate
-                                              if (/\bremoved\s+(?:all\s+)?(?:time\s+estimate|estimate\s+time)\b/i.test(body)) {
-                                                  // zero-out estimate regardless of date for consistency
-                                                  let assigneesForShare = recipients;
-                                                  if (attribution === 'author') {
-                                                      assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
-                                                  }
-                                                  for (const person of assigneesForShare) {
-                                                      const uid = Number(person.id);
-                                                      if (!userIdsSet.has(uid)) continue;
-                                                      if (!usersMap[uid]) {
-                                                          usersMap[uid] = {
-                                                              userId: uid,
-                                                              username: person.username || note.author.username || '',
-                                                              name: person.name || note.author.name || '',
-                                                              avatar_url: person.avatar_url || note.author.avatar_url || '',
-                                                              totalSpent: 0,
-                                                              totalEstimate: 0,
-                                                              issues: {},
-                                                              labels: new Set(),
-                                                              byDate: {},
-                                                          };
-                                                      }
-                                                      if (!usersMap[uid].issues[issue.iid]) {
-                                                          usersMap[uid].issues[issue.iid] = {
-                                                              iid: issue.iid,
-                                                              title: issue.title,
-                                                              state: issue.state,
-                                                              labels: issue.labels,
-                                                              time_stats: issue.time_stats,
-                                                              milestone: issue.milestone,
-                                                              created_at: issue.created_at,
-                                                              updated_at: issue.updated_at,
-                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
-                                                              spentInRange: 0,
-                                                              estimateInRange: 0,
-                                                              commentsInRange: 0,
-                                                              byDate: {},
-                                                              estimateByDate: {},
-                                                              quality: {
-                                                                  hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
-                                                                  hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
-                                                                  labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
-                                                                  hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
-                                                                  estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
-                                                                  spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
-                                                                  spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
-                                                                  descriptionEditsInRange: 0,
-                                                                  largeOneOffSpends: [],
-                                                              },
-                                                              estimateCurrent: 0,
-                                                          };
-                                                      }
-                                                      const issRec = usersMap[uid].issues[issue.iid];
-                                                      const curr = Number(issRec.estimateCurrent || 0);
-                                                      const deltaSet = -curr;
-                                                      issRec.estimateCurrent = 0;
-                                                      // attribution share
-                                                      const assigneesCount = (attribution === 'author') ? 1 : (recipients.length || 1);
-                                                      const share = assigneesCount > 0 ? deltaSet / assigneesCount : deltaSet;
-                                                      // record to estimateInRange regardless of date (consistent with spent remove-all)
-                                                      usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
-                                                      issRec.estimateInRange = (issRec.estimateInRange || 0) + share;
-                                                      issRec.estimateByDate[noteKey] = (issRec.estimateByDate[noteKey] || 0) + share;
-                                                  }
-                                              } else {
-                                                  // add/sub/changed estimate
-                                                  const H = 3600, D = 8 * H, W = 5 * D, MO = 4 * W;
-                                                  const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
-                                                  const added = body.includes('added') && body.includes('time estimate');
-                                                  const removed = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && body.includes('time estimate');
-                                                  const changedMatch = body.match(/changed\s+time\s+estimate\s+to\s+(.+?)(?:\.|$)/i);
-                                                  if (!(added || removed || changedMatch)) {
-                                                      // nothing
-                                                  } else {
-                                                      let desiredDelta = 0;
-                                                      if (changedMatch) {
-                                                          let seconds = 0; let m;
-                                                          const src = changedMatch[1];
-                                                          while ((m = unitRe.exec(src)) !== null) {
-                                                              const val = parseInt(m[1], 10);
-                                                              const unit = m[2].toLowerCase();
-                                                              if (Number.isNaN(val)) continue;
-                                                              if (unit === 'mo') seconds += val * MO;
-                                                              else if (unit === 'w') seconds += val * W;
-                                                              else if (unit === 'd') seconds += val * D;
-                                                              else if (unit === 'h') seconds += val * H;
-                                                              else if (unit === 'm') seconds += val * 60;
-                                                              else if (unit === 's') seconds += val;
-                                                          }
-                                                          // desiredDelta = toValue - current
-                                                          const curr = Number((usersMap[userIdsSet.has(authorId) ? authorId : (recipients[0]?.id)] && usersMap[userIdsSet.has(authorId) ? authorId : (recipients[0]?.id)].issues[issue.iid]?.estimateCurrent) || 0);
-                                                          desiredDelta = seconds - curr;
+                                                // --- time estimate changes ---
+                                                {
+                                                      const noteKey = toKey(note.created_at);
+                                                      const body = String(note.body).toLowerCase();
+                                                      const authorId = Number(note.author.id);
+                                                      // remove all estimate
+                                                      if (/\bremoved\s+(?:all\s+)?(?:time\s+estimate|estimate\s+time)\b/i.test(body)) {
+                                                            // zero-out estimate regardless of date for consistency
+                                                            let assigneesForShare = recipients;
+                                                            if (attribution === 'author') {
+                                                                  assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
+                                                            }
+                                                            for (const person of assigneesForShare) {
+                                                                  const uid = Number(person.id);
+                                                                  if (!userIdsSet.has(uid)) continue;
+                                                                  if (!usersMap[uid]) {
+                                                                        usersMap[uid] = {
+                                                                              userId: uid,
+                                                                              username: person.username || note.author.username || '',
+                                                                              name: person.name || note.author.name || '',
+                                                                              avatar_url: person.avatar_url || note.author.avatar_url || '',
+                                                                              totalSpent: 0,
+                                                                              totalEstimate: 0,
+                                                                              issues: {},
+                                                                              labels: new Set(),
+                                                                              byDate: {},
+                                                                        };
+                                                                  }
+                                                                  if (!usersMap[uid].issues[issue.iid]) {
+                                                                        usersMap[uid].issues[issue.iid] = {
+                                                                              iid: issue.iid,
+                                                                              title: issue.title,
+                                                                              state: issue.state,
+                                                                              labels: issue.labels,
+                                                                              time_stats: issue.time_stats,
+                                                                              milestone: issue.milestone,
+                                                                              created_at: issue.created_at,
+                                                                              updated_at: issue.updated_at,
+                                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                                                              spentInRange: 0,
+                                                                              estimateInRange: 0,
+                                                                              commentsInRange: 0,
+                                                                              byDate: {},
+                                                                              estimateByDate: {},
+                                                                              quality: {
+                                                                                    hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                                                                                    hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                                                                                    labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                                                                                    hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
+                                                                                    estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                                                                                    spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                                                                                    spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
+                                                                                    descriptionEditsInRange: 0,
+                                                                                    largeOneOffSpends: [],
+                                                                              },
+                                                                              estimateCurrent: 0,
+                                                                        };
+                                                                  }
+                                                                  const issRec = usersMap[uid].issues[issue.iid];
+                                                                  const curr = Number(issRec.estimateCurrent || 0);
+                                                                  const deltaSet = -curr;
+                                                                  issRec.estimateCurrent = 0;
+                                                                  // attribution share
+                                                                  const assigneesCount = attribution === 'author' ? 1 : recipients.length || 1;
+                                                                  const share = assigneesCount > 0 ? deltaSet / assigneesCount : deltaSet;
+                                                                  // record to estimateInRange regardless of date (consistent with spent remove-all)
+                                                                  usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
+                                                                  issRec.estimateInRange = (issRec.estimateInRange || 0) + share;
+                                                                  issRec.estimateByDate[noteKey] = (issRec.estimateByDate[noteKey] || 0) + share;
+                                                            }
                                                       } else {
-                                                          let seconds = 0; let m;
-                                                          const srcMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
-                                                          const src = srcMatch ? srcMatch[1] : body;
-                                                          while ((m = unitRe.exec(src)) !== null) {
-                                                              const val = parseInt(m[1], 10);
-                                                              const unit = m[2].toLowerCase();
-                                                              if (Number.isNaN(val)) continue;
-                                                              if (unit === 'mo') seconds += val * MO;
-                                                              else if (unit === 'w') seconds += val * W;
-                                                              else if (unit === 'd') seconds += val * D;
-                                                              else if (unit === 'h') seconds += val * H;
-                                                              else if (unit === 'm') seconds += val * 60;
-                                                              else if (unit === 's') seconds += val;
-                                                          }
-                                                          seconds = Math.abs(seconds);
-                                                          desiredDelta = added ? seconds : -seconds;
+                                                            // add/sub/changed estimate
+                                                            const H = 3600,
+                                                                  D = 8 * H,
+                                                                  W = 5 * D,
+                                                                  MO = 4 * W;
+                                                            const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                                                            const added = body.includes('added') && body.includes('time estimate');
+                                                            const removed = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && body.includes('time estimate');
+                                                            const changedMatch = body.match(/changed\s+time\s+estimate\s+to\s+(.+?)(?:\.|$)/i);
+                                                            if (!(added || removed || changedMatch)) {
+                                                                  // nothing
+                                                            } else {
+                                                                  let desiredDelta = 0;
+                                                                  if (changedMatch) {
+                                                                        let seconds = 0;
+                                                                        let m;
+                                                                        const src = changedMatch[1];
+                                                                        while ((m = unitRe.exec(src)) !== null) {
+                                                                              const val = parseInt(m[1], 10);
+                                                                              const unit = m[2].toLowerCase();
+                                                                              if (Number.isNaN(val)) continue;
+                                                                              if (unit === 'mo') seconds += val * MO;
+                                                                              else if (unit === 'w') seconds += val * W;
+                                                                              else if (unit === 'd') seconds += val * D;
+                                                                              else if (unit === 'h') seconds += val * H;
+                                                                              else if (unit === 'm') seconds += val * 60;
+                                                                              else if (unit === 's') seconds += val;
+                                                                        }
+                                                                        // desiredDelta = toValue - current
+                                                                        const curr = Number((usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id] && usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id].issues[issue.iid]?.estimateCurrent) || 0);
+                                                                        desiredDelta = seconds - curr;
+                                                                  } else {
+                                                                        let seconds = 0;
+                                                                        let m;
+                                                                        const srcMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
+                                                                        const src = srcMatch ? srcMatch[1] : body;
+                                                                        while ((m = unitRe.exec(src)) !== null) {
+                                                                              const val = parseInt(m[1], 10);
+                                                                              const unit = m[2].toLowerCase();
+                                                                              if (Number.isNaN(val)) continue;
+                                                                              if (unit === 'mo') seconds += val * MO;
+                                                                              else if (unit === 'w') seconds += val * W;
+                                                                              else if (unit === 'd') seconds += val * D;
+                                                                              else if (unit === 'h') seconds += val * H;
+                                                                              else if (unit === 'm') seconds += val * 60;
+                                                                              else if (unit === 's') seconds += val;
+                                                                        }
+                                                                        seconds = Math.abs(seconds);
+                                                                        desiredDelta = added ? seconds : -seconds;
+                                                                  }
+                                                                  // apply per recipients/author; clamp per issue current not to go below zero
+                                                                  let assigneesForShare = recipients;
+                                                                  if (attribution === 'author') {
+                                                                        assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
+                                                                  }
+                                                                  // We need a single issue record to track current; pick any target user to hold the shared state if absent
+                                                                  // We'll ensure issue record exists for each selected user when recording in-range deltas
+                                                                  // Compute clamp based on a shared current; use a temporary holder
+                                                                  if (!issue.__estimateCurrentTmp) issue.__estimateCurrentTmp = 0;
+                                                                  let currShared = issue.__estimateCurrentTmp;
+                                                                  const clampedDelta = currShared + desiredDelta < 0 ? -currShared : desiredDelta;
+                                                                  issue.__estimateCurrentTmp = currShared + clampedDelta;
+                                                                  const baseCount = attribution === 'author' ? 1 : recipients.length || 1;
+                                                                  const share = baseCount > 0 ? clampedDelta / baseCount : clampedDelta;
+                                                                  if (isInRange(noteKey)) {
+                                                                        for (const person of assigneesForShare) {
+                                                                              const uid = Number(person.id);
+                                                                              if (!userIdsSet.has(uid)) continue;
+                                                                              if (!usersMap[uid]) {
+                                                                                    usersMap[uid] = {
+                                                                                          userId: uid,
+                                                                                          username: person.username || note.author.username || '',
+                                                                                          name: person.name || note.author.name || '',
+                                                                                          avatar_url: person.avatar_url || note.author.avatar_url || '',
+                                                                                          totalSpent: 0,
+                                                                                          totalEstimate: 0,
+                                                                                          issues: {},
+                                                                                          labels: new Set(),
+                                                                                          byDate: {},
+                                                                                    };
+                                                                              }
+                                                                              if (!usersMap[uid].issues[issue.iid]) {
+                                                                                    usersMap[uid].issues[issue.iid] = {
+                                                                                          iid: issue.iid,
+                                                                                          title: issue.title,
+                                                                                          state: issue.state,
+                                                                                          labels: issue.labels,
+                                                                                          time_stats: issue.time_stats,
+                                                                                          milestone: issue.milestone,
+                                                                                          created_at: issue.created_at,
+                                                                                          updated_at: issue.updated_at,
+                                                                                          assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                                                                          spentInRange: 0,
+                                                                                          estimateInRange: 0,
+                                                                                          commentsInRange: 0,
+                                                                                          byDate: {},
+                                                                                          estimateByDate: {},
+                                                                                          quality: {
+                                                                                                hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                                                                                                hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                                                                                                labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                                                                                                hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
+                                                                                                estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                                                                                                spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                                                                                                spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
+                                                                                                descriptionEditsInRange: 0,
+                                                                                                largeOneOffSpends: [],
+                                                                                          },
+                                                                                          estimateCurrent: 0,
+                                                                                    };
+                                                                              }
+                                                                              usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
+                                                                              usersMap[uid].issues[issue.iid].estimateInRange = (usersMap[uid].issues[issue.iid].estimateInRange || 0) + share;
+                                                                              usersMap[uid].issues[issue.iid].estimateByDate[noteKey] = (usersMap[uid].issues[issue.iid].estimateByDate[noteKey] || 0) + share;
+                                                                        }
+                                                                  }
+                                                            }
                                                       }
-                                                      // apply per recipients/author; clamp per issue current not to go below zero
-                                                      let assigneesForShare = recipients;
-                                                      if (attribution === 'author') {
-                                                          assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
-                                                      }
-                                                      // We need a single issue record to track current; pick any target user to hold the shared state if absent
-                                                      // We'll ensure issue record exists for each selected user when recording in-range deltas
-                                                      // Compute clamp based on a shared current; use a temporary holder
-                                                      if (!issue.__estimateCurrentTmp) issue.__estimateCurrentTmp = 0;
-                                                      let currShared = issue.__estimateCurrentTmp;
-                                                      const clampedDelta = currShared + desiredDelta < 0 ? -currShared : desiredDelta;
-                                                      issue.__estimateCurrentTmp = currShared + clampedDelta;
-                                                      const baseCount = (attribution === 'author') ? 1 : (recipients.length || 1);
-                                                      const share = baseCount > 0 ? clampedDelta / baseCount : clampedDelta;
-                                                      if (isInRange(noteKey)) {
-                                                          for (const person of assigneesForShare) {
-                                                              const uid = Number(person.id);
-                                                              if (!userIdsSet.has(uid)) continue;
-                                                              if (!usersMap[uid]) {
-                                                                  usersMap[uid] = {
-                                                                      userId: uid,
-                                                                      username: person.username || note.author.username || '',
-                                                                      name: person.name || note.author.name || '',
-                                                                      avatar_url: person.avatar_url || note.author.avatar_url || '',
-                                                                      totalSpent: 0,
-                                                                      totalEstimate: 0,
-                                                                      issues: {},
-                                                                      labels: new Set(),
-                                                                      byDate: {},
-                                                                  };
-                                                              }
-                                                              if (!usersMap[uid].issues[issue.iid]) {
-                                                                  usersMap[uid].issues[issue.iid] = {
-                                                                      iid: issue.iid,
-                                                                      title: issue.title,
-                                                                      state: issue.state,
-                                                                      labels: issue.labels,
-                                                                      time_stats: issue.time_stats,
-                                                                      milestone: issue.milestone,
-                                                                      created_at: issue.created_at,
-                                                                      updated_at: issue.updated_at,
-                                                                      assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
-                                                                      spentInRange: 0,
-                                                                      estimateInRange: 0,
-                                                                      commentsInRange: 0,
-                                                                      byDate: {},
-                                                                      estimateByDate: {},
-                                                                      quality: {
-                                                                          hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
-                                                                          hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
-                                                                          labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
-                                                                          hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
-                                                                          estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
-                                                                          spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
-                                                                          spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
-                                                                          descriptionEditsInRange: 0,
-                                                                          largeOneOffSpends: [],
-                                                                      },
-                                                                      estimateCurrent: 0,
-                                                                  };
-                                                              }
-                                                              usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
-                                                              usersMap[uid].issues[issue.iid].estimateInRange = (usersMap[uid].issues[issue.iid].estimateInRange || 0) + share;
-                                                              usersMap[uid].issues[issue.iid].estimateByDate[noteKey] = (usersMap[uid].issues[issue.iid].estimateByDate[noteKey] || 0) + share;
-                                                          }
-                                                      }
-                                                  }
-                                              }
-                                          }
+                                                }
                                           }
                                     }
 
@@ -2256,7 +2272,7 @@ function master1() {
                                                             milestone: issue.milestone,
                                                             created_at: issue.created_at,
                                                             updated_at: issue.updated_at,
-                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                                            assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                             spentInRange: 0,
                                                             commentsInRange: 0,
                                                             quality: {
@@ -2280,7 +2296,7 @@ function master1() {
                                                 const lastEditedAt = note.last_edited_at || note.updated_at;
                                                 const editor = note.last_edited_by || note.editor || note.author;
                                                 if (lastEditedAt) {
-                                                const editKey = toKey(lastEditedAt);
+                                                      const editKey = toKey(lastEditedAt);
                                                       if (isInRange(editKey) && editor && Number(editor.id) === authorId && note.created_at !== lastEditedAt) {
                                                             const bodyStr = typeof note.body === 'string' ? note.body.toLowerCase() : '';
                                                             if (bodyStr.includes('description') || bodyStr.includes('edited') || bodyStr.includes('changed')) {
@@ -2295,7 +2311,7 @@ function master1() {
                   }
 
                   for (const issue of allIssues) {
-                                                const updatedKey = issue.updated_at ? toKey(issue.updated_at) : null;
+                        const updatedKey = issue.updated_at ? toKey(issue.updated_at) : null;
                         if (!updatedKey || !isInRange(updatedKey)) continue;
                         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
                         const legacy = issue.assignee ? [issue.assignee] : [];
@@ -2324,7 +2340,7 @@ function master1() {
                                           time_stats: issue.time_stats,
                                           milestone: issue.milestone,
                                           updated_at: issue.updated_at,
-                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                          assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                           spentInRange: 0,
                                           commentsInRange: 0,
                                     };
@@ -2365,7 +2381,7 @@ function master1() {
                                           time_stats: issue.time_stats,
                                           milestone: issue.milestone,
                                           updated_at: issue.updated_at,
-                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                          assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                           spentInRange: 0,
                                           commentsInRange: 0,
                                     };
@@ -2549,13 +2565,13 @@ function master1() {
                         for (const iss of Object.values(u.issues)) {
                               const q = iss.quality || {};
                               // توزیع spend در روزهای مختلف
-                                    const spentDistribution = {};
-                                    if (iss.spentInRange && iss.byDate) {
-                                          for (const [date, spent] of Object.entries(iss.byDate)) {
-                                                if (spent > 0) spentDistribution[date] = spent;
-                                          }
+                              const spentDistribution = {};
+                              if (iss.spentInRange && iss.byDate) {
+                                    for (const [date, spent] of Object.entries(iss.byDate)) {
+                                          if (spent > 0) spentDistribution[date] = spent;
                                     }
-                                    q.spentDistributionDays = Object.keys(spentDistribution).length;
+                              }
+                              q.spentDistributionDays = Object.keys(spentDistribution).length;
                               // تعداد ویرایش توضیح
                               q.descriptionEdits = q.descriptionEditsInRange || 0;
                               // نسبت spent به estimate
@@ -3044,8 +3060,8 @@ function master1() {
                                           spent: d.spent || 0,
                                           spent_hm: d.spent_hm || '',
                                           isAbsence: d.isAbsence ? 'Y' : '',
-                                          estimate: e ? (e.estimate || 0) : 0,
-                                          estimate_hm: e ? (e.estimate_hm || '') : '',
+                                          estimate: e ? e.estimate || 0 : 0,
+                                          estimate_hm: e ? e.estimate_hm || '' : '',
                                     });
                               }
                         }
@@ -3115,7 +3131,7 @@ function master1() {
                               { header: 'Message', key: 'message', width: 120 },
                         ];
                         for (const u of results) {
-                              const msgs = (u.summary && Array.isArray(u.summary.guidance)) ? u.summary.guidance : [];
+                              const msgs = u.summary && Array.isArray(u.summary.guidance) ? u.summary.guidance : [];
                               for (const m of msgs) {
                                     wsGuidance.addRow({ userId: u.userId, username: u.username, message: m });
                               }
@@ -3136,7 +3152,7 @@ function master1() {
                               { header: 'Date', key: 'date', width: 14 },
                         ];
                         for (const u of results) {
-                              const abs = (u.summary && Array.isArray(u.summary.absenceDays)) ? u.summary.absenceDays : [];
+                              const abs = u.summary && Array.isArray(u.summary.absenceDays) ? u.summary.absenceDays : [];
                               for (const ad of abs) {
                                     wsAbsences.addRow({ userId: u.userId, username: u.username, date: ad });
                               }
@@ -3157,7 +3173,7 @@ function master1() {
                               { header: 'Label', key: 'label', width: 40 },
                         ];
                         for (const u of results) {
-                              for (const label of (u.labels || [])) {
+                              for (const label of u.labels || []) {
                                     wsLabels.addRow({ userId: u.userId, username: u.username, label });
                               }
                         }
