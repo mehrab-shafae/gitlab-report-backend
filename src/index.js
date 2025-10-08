@@ -2423,17 +2423,26 @@ function master1() {
                               };
                         });
                         const H = 3600;
-                        const qTargetMinH = Number(req.query.min_hours ?? process.env.MIN_HOURS ?? 7);
-                        const qTargetMaxH = Number(req.query.max_hours ?? process.env.MAX_HOURS ?? 8);
-                        const qOverworkSoftH = Number(req.query.overwork_soft_hours ?? process.env.OVERWORK_SOFT_HOURS ?? 9);
+                        // --- New percent-based thresholds (base day = 8h20m = 30000s by default) ---
+                        const qBaseSec = Number(req.query.base_seconds ?? process.env.BASE_DAY_SECONDS ?? 30000);
+                        const baseDaySeconds = Number.isFinite(qBaseSec) ? qBaseSec : 30000; // 8h20m
+                        const qMinPercent = Number(req.query.min_percent ?? process.env.MIN_PERCENT ?? 0.3);
+                        const qNormalHighPercent = Number(req.query.normal_high_percent ?? process.env.NORMAL_HIGH_PERCENT ?? 0.7);
+                        const qPositiveLowPercent = Number(req.query.positive_low_percent ?? process.env.POSITIVE_LOW_PERCENT ?? 0.6);
+                        const qPositiveHighPercent = Number(req.query.positive_high_percent ?? process.env.POSITIVE_HIGH_PERCENT ?? 0.9);
+                        const qMaxCapHours = Number(req.query.max_cap_hours ?? process.env.MAX_CAP_HOURS ?? 10);
+                        const targetMin = (Number.isFinite(qMinPercent) ? qMinPercent : 0.3) * baseDaySeconds; // 30%
+                        const targetMax = (Number.isFinite(qNormalHighPercent) ? qNormalHighPercent : 0.7) * baseDaySeconds; // 70%
+                        const positiveLow = (Number.isFinite(qPositiveLowPercent) ? qPositiveLowPercent : 0.6) * baseDaySeconds; // 60%
+                        const overworkSoft = (Number.isFinite(qPositiveHighPercent) ? qPositiveHighPercent : 0.9) * baseDaySeconds; // 90%
+                        const maxCapSeconds = (Number.isFinite(qMaxCapHours) ? qMaxCapHours : 10) * H; // up to 10h is okay (excellent, no points)
                         const qFakeSpendH = Number(req.query.fake_spend_hours ?? process.env.FAKE_SPEND_HOURS ?? 5);
-                        const targetMin = (Number.isFinite(qTargetMinH) ? qTargetMinH : 7) * H;
-                        const targetMax = (Number.isFinite(qTargetMaxH) ? qTargetMaxH : 8) * H;
-                        const overworkSoft = (Number.isFinite(qOverworkSoftH) ? qOverworkSoftH : 9) * H;
-                        const fakeSpendThreshold = (Number.isFinite(qFakeSpendH) ? qFakeSpendH : 5) * H;
+                        const fakeSpendThreshold = (Number.isFinite(qFakeSpendH) ? qFakeSpendH : 5) * H; // one-off spend anomaly threshold
                         let daysBelowMin = 0;
                         let daysAboveMax = 0;
                         let daysFake = 0;
+                        let daysPositive = 0; // 60%..90% of base
+                        let daysOver90NoPoint = 0; // >90%..<=10h
                         let healthyDays = 0;
                         let totalDays = daily.length;
                         let activeDays = 0;
@@ -2450,10 +2459,16 @@ function master1() {
                                           daysBelowMin += 1;
                                     } else if (d.spent >= targetMin && d.spent <= targetMax) {
                                           healthyDays += 1;
-                                    } else if (d.spent > targetMax && d.spent <= overworkSoft) {
-                                          daysAboveMax += 1;
-                                    } else if (d.spent > overworkSoft) {
-                                          daysFake += 1;
+                                    }
+                                    if (d.spent >= positiveLow && d.spent <= overworkSoft) {
+                                          daysPositive += 1; // positive band 60%..90%
+                                    }
+                                    if (d.spent > targetMax && d.spent <= overworkSoft) {
+                                          daysAboveMax += 1; // 70%..90%
+                                    } else if (d.spent > overworkSoft && d.spent <= maxCapSeconds) {
+                                          daysOver90NoPoint += 1; // >90%..<=10h (excellent, no points)
+                                    } else if (d.spent > maxCapSeconds) {
+                                          daysFake += 1; // >10h
                                           fakeDaysDetails.push({ date: d.date, spent: d.spent });
                                     }
                               }
@@ -2500,11 +2515,11 @@ function master1() {
                         let realnessScore = 1.0;
                         // کم‌کاری
                         if (daysBelowMin > 0) realnessScore -= Math.min(0.2, 0.03 * daysBelowMin);
-                        // healthy
-                        if (healthyDays > 0) realnessScore += Math.min(0.15, 0.01 * healthyDays);
-                        // بیش‌کاری سالم
-                        if (daysAboveMax > 0) realnessScore += Math.min(0.08, 0.008 * daysAboveMax);
-                        // fake spend (بیش از ۹ ساعت)
+                        // normal (30%..70%): no bonus, no penalty
+                        // positive band (60%..90%): give positive points
+                        if (daysPositive > 0) realnessScore += Math.min(0.12, 0.012 * daysPositive);
+                        // >90%..<=10h: excellent but no points (no change)
+                        // fake spend (>10h)
                         if (daysFake > 0) realnessScore -= Math.min(0.5, 0.15 * daysFake);
                         // fake spend خیلی زیاد (بیش از ۱۲ ساعت)
                         const daysExtremeFake = daily.filter(d => d.spent > 12 * H).length;
@@ -2546,6 +2561,8 @@ function master1() {
                         u.activeDays = activeDays;
                         u.fakeDaysDetails = fakeDaysDetails;
                         u.largeOneOffSpendsCount = largeOneOffSpendsCount;
+                        u.daysPositive = daysPositive; // 60%..90%
+                        u.daysOver90NoPoint = daysOver90NoPoint; // >90%..<=10h
                         u.totalSpent = totalSpent;
                         u.totalEstimate = totalEstimate;
                         // --- ساخت خلاصه روزانه estimate بر اساس per-issue estimateByDate ---
@@ -2731,12 +2748,12 @@ function master1() {
                         // پیام fake spend کلی
                         if (u.daysFake > 0) {
                               const fakeDates = u.fakeDaysDetails.filter(f => !f.type).map(f => f.date);
-                              if (fakeDates.length > 0) guidance.push(`در روزهای ${fakeDates.join(', ')} spend غیرواقعی (بیش از ۹ ساعت) ثبت شده است.`);
+                              if (fakeDates.length > 0) guidance.push(`در روزهای ${fakeDates.join(', ')} spend غیرواقعی (بیش از ۱۰ ساعت) ثبت شده است.`);
                               const extremeFakeDates = u.dailySummary.filter(d => d.spent > 12 * 3600).map(d => d.date);
                               if (extremeFakeDates.length > 0) guidance.push(`در روزهای ${extremeFakeDates.join(', ')} spend بسیار غیرواقعی (بیش از ۱۲ ساعت) ثبت شده است.`);
                         }
                         // پیام spend کمتر از حداقل
-                        const belowMinDates = u.dailySummary.filter(d => d.spent > 0 && d.spent < 8 * 3600).map(d => d.date);
+                        const belowMinDates = u.dailySummary.filter(d => d.spent > 0 && d.spent < targetMin).map(d => d.date);
                         if (belowMinDates.length > 0) guidance.push(`در روزهای ${belowMinDates.join(', ')} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
                         // پیام large one-off spends
                         if (u.largeOneOffSpendsCount > 0) guidance.push('چند spend بزرگ یکجا ثبت شده که مشکوک به فیک بودن است.');
