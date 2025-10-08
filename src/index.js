@@ -1527,6 +1527,26 @@ function master1() {
                   const startKey = toKey(fromDate);
                   const endKey = toKey(toDate);
                   const isInRange = isoDate => isoDate >= startKey && isoDate <= endKey;
+                  // --- configurable working days ---
+                  const parseWorkdays = (input) => {
+                        // Accept: comma-separated of numbers 0..6 (Sun..Sat) or names mon,tue,...
+                        const nameToNum = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+                        if (!input) return new Set([1, 2, 3, 4, 5]); // default Mon-Fri
+                        const parts = String(input).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+                        const out = new Set();
+                        for (const p of parts) {
+                              if (/^\d+$/.test(p)) {
+                                    const n = Number(p);
+                                    if (n >= 0 && n <= 6) out.add(n);
+                              } else if (nameToNum.hasOwnProperty(p)) {
+                                    out.add(nameToNum[p]);
+                              }
+                        }
+                        return out.size > 0 ? out : new Set([1, 2, 3, 4, 5]);
+                  };
+                  // Only from env; default to Sunday-Thursday (0..4)
+                  const workdaysParam = process.env.WORKDAYS; // e.g., "sun,mon,tue,wed,thu" or "0,1,2,3,4"
+                  const workdaysSet = parseWorkdays(workdaysParam || 'sun,mon,tue,wed,thu');
                   // Build working-day calendar (Saturday to Thursday), respecting tz_offset
                   const enumerateWorkingDates = () => {
                         const out = [];
@@ -1539,8 +1559,7 @@ function master1() {
                               const adjMs = d.getTime() + (Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0) * 60000;
                               const adj = new Date(adjMs);
                               const weekday = adj.getUTCDay(); // 0..6 (Sun..Sat)
-                              // Working days: Saturday(6) through Thursday(4), exclude Friday(5)
-                              if (weekday !== 5) out.push(key);
+                              if (workdaysSet.has(weekday)) out.push(key);
                         }
                         return out;
                   };
@@ -1811,8 +1830,10 @@ function master1() {
                                                                         updated_at: issue.updated_at,
                                                               assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
                                                                         spentInRange: 0,
+                                                          estimateInRange: 0,
                                                                         commentsInRange: 0,
                                                                           byDate: {},
+                                                          estimateByDate: {},
                                                                         quality: {
                                                                               hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
                                                                               hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
@@ -1824,6 +1845,7 @@ function master1() {
                                                                               descriptionEditsInRange: 0,
                                                                               largeOneOffSpends: [],
                                                                         },
+                                                          estimateCurrent: 0,
                                                                   };
                                                                   if (Array.isArray(issue.labels)) {
                                                                         issue.labels.forEach(l => usersMap[uidShare].labels.add(l));
@@ -1986,6 +2008,191 @@ function master1() {
                                                             });
                                                       }
                                                 }
+                                          // --- time estimate changes ---
+                                          {
+                                              const noteKey = toKey(note.created_at);
+                                              const body = String(note.body).toLowerCase();
+                                              const authorId = Number(note.author.id);
+                                              // remove all estimate
+                                              if (/\bremoved\s+(?:all\s+)?(?:time\s+estimate|estimate\s+time)\b/i.test(body)) {
+                                                  // zero-out estimate regardless of date for consistency
+                                                  let assigneesForShare = recipients;
+                                                  if (attribution === 'author') {
+                                                      assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
+                                                  }
+                                                  for (const person of assigneesForShare) {
+                                                      const uid = Number(person.id);
+                                                      if (!userIdsSet.has(uid)) continue;
+                                                      if (!usersMap[uid]) {
+                                                          usersMap[uid] = {
+                                                              userId: uid,
+                                                              username: person.username || note.author.username || '',
+                                                              name: person.name || note.author.name || '',
+                                                              avatar_url: person.avatar_url || note.author.avatar_url || '',
+                                                              totalSpent: 0,
+                                                              totalEstimate: 0,
+                                                              issues: {},
+                                                              labels: new Set(),
+                                                              byDate: {},
+                                                          };
+                                                      }
+                                                      if (!usersMap[uid].issues[issue.iid]) {
+                                                          usersMap[uid].issues[issue.iid] = {
+                                                              iid: issue.iid,
+                                                              title: issue.title,
+                                                              state: issue.state,
+                                                              labels: issue.labels,
+                                                              time_stats: issue.time_stats,
+                                                              milestone: issue.milestone,
+                                                              created_at: issue.created_at,
+                                                              updated_at: issue.updated_at,
+                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                                              spentInRange: 0,
+                                                              estimateInRange: 0,
+                                                              commentsInRange: 0,
+                                                              byDate: {},
+                                                              estimateByDate: {},
+                                                              quality: {
+                                                                  hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                                                                  hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                                                                  labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                                                                  hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
+                                                                  estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                                                                  spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                                                                  spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
+                                                                  descriptionEditsInRange: 0,
+                                                                  largeOneOffSpends: [],
+                                                              },
+                                                              estimateCurrent: 0,
+                                                          };
+                                                      }
+                                                      const issRec = usersMap[uid].issues[issue.iid];
+                                                      const curr = Number(issRec.estimateCurrent || 0);
+                                                      const deltaSet = -curr;
+                                                      issRec.estimateCurrent = 0;
+                                                      // attribution share
+                                                      const assigneesCount = (attribution === 'author') ? 1 : (recipients.length || 1);
+                                                      const share = assigneesCount > 0 ? deltaSet / assigneesCount : deltaSet;
+                                                      // record to estimateInRange regardless of date (consistent with spent remove-all)
+                                                      usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
+                                                      issRec.estimateInRange = (issRec.estimateInRange || 0) + share;
+                                                      issRec.estimateByDate[noteKey] = (issRec.estimateByDate[noteKey] || 0) + share;
+                                                  }
+                                              } else {
+                                                  // add/sub/changed estimate
+                                                  const H = 3600, D = 8 * H, W = 5 * D, MO = 4 * W;
+                                                  const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                                                  const added = body.includes('added') && body.includes('time estimate');
+                                                  const removed = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && body.includes('time estimate');
+                                                  const changedMatch = body.match(/changed\s+time\s+estimate\s+to\s+(.+?)(?:\.|$)/i);
+                                                  if (!(added || removed || changedMatch)) {
+                                                      // nothing
+                                                  } else {
+                                                      let desiredDelta = 0;
+                                                      if (changedMatch) {
+                                                          let seconds = 0; let m;
+                                                          const src = changedMatch[1];
+                                                          while ((m = unitRe.exec(src)) !== null) {
+                                                              const val = parseInt(m[1], 10);
+                                                              const unit = m[2].toLowerCase();
+                                                              if (Number.isNaN(val)) continue;
+                                                              if (unit === 'mo') seconds += val * MO;
+                                                              else if (unit === 'w') seconds += val * W;
+                                                              else if (unit === 'd') seconds += val * D;
+                                                              else if (unit === 'h') seconds += val * H;
+                                                              else if (unit === 'm') seconds += val * 60;
+                                                              else if (unit === 's') seconds += val;
+                                                          }
+                                                          // desiredDelta = toValue - current
+                                                          const curr = Number((usersMap[userIdsSet.has(authorId) ? authorId : (recipients[0]?.id)] && usersMap[userIdsSet.has(authorId) ? authorId : (recipients[0]?.id)].issues[issue.iid]?.estimateCurrent) || 0);
+                                                          desiredDelta = seconds - curr;
+                                                      } else {
+                                                          let seconds = 0; let m;
+                                                          const srcMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
+                                                          const src = srcMatch ? srcMatch[1] : body;
+                                                          while ((m = unitRe.exec(src)) !== null) {
+                                                              const val = parseInt(m[1], 10);
+                                                              const unit = m[2].toLowerCase();
+                                                              if (Number.isNaN(val)) continue;
+                                                              if (unit === 'mo') seconds += val * MO;
+                                                              else if (unit === 'w') seconds += val * W;
+                                                              else if (unit === 'd') seconds += val * D;
+                                                              else if (unit === 'h') seconds += val * H;
+                                                              else if (unit === 'm') seconds += val * 60;
+                                                              else if (unit === 's') seconds += val;
+                                                          }
+                                                          seconds = Math.abs(seconds);
+                                                          desiredDelta = added ? seconds : -seconds;
+                                                      }
+                                                      // apply per recipients/author; clamp per issue current not to go below zero
+                                                      let assigneesForShare = recipients;
+                                                      if (attribution === 'author') {
+                                                          assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
+                                                      }
+                                                      // We need a single issue record to track current; pick any target user to hold the shared state if absent
+                                                      // We'll ensure issue record exists for each selected user when recording in-range deltas
+                                                      // Compute clamp based on a shared current; use a temporary holder
+                                                      if (!issue.__estimateCurrentTmp) issue.__estimateCurrentTmp = 0;
+                                                      let currShared = issue.__estimateCurrentTmp;
+                                                      const clampedDelta = currShared + desiredDelta < 0 ? -currShared : desiredDelta;
+                                                      issue.__estimateCurrentTmp = currShared + clampedDelta;
+                                                      const baseCount = (attribution === 'author') ? 1 : (recipients.length || 1);
+                                                      const share = baseCount > 0 ? clampedDelta / baseCount : clampedDelta;
+                                                      if (isInRange(noteKey)) {
+                                                          for (const person of assigneesForShare) {
+                                                              const uid = Number(person.id);
+                                                              if (!userIdsSet.has(uid)) continue;
+                                                              if (!usersMap[uid]) {
+                                                                  usersMap[uid] = {
+                                                                      userId: uid,
+                                                                      username: person.username || note.author.username || '',
+                                                                      name: person.name || note.author.name || '',
+                                                                      avatar_url: person.avatar_url || note.author.avatar_url || '',
+                                                                      totalSpent: 0,
+                                                                      totalEstimate: 0,
+                                                                      issues: {},
+                                                                      labels: new Set(),
+                                                                      byDate: {},
+                                                                  };
+                                                              }
+                                                              if (!usersMap[uid].issues[issue.iid]) {
+                                                                  usersMap[uid].issues[issue.iid] = {
+                                                                      iid: issue.iid,
+                                                                      title: issue.title,
+                                                                      state: issue.state,
+                                                                      labels: issue.labels,
+                                                                      time_stats: issue.time_stats,
+                                                                      milestone: issue.milestone,
+                                                                      created_at: issue.created_at,
+                                                                      updated_at: issue.updated_at,
+                                                                      assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                                                      spentInRange: 0,
+                                                                      estimateInRange: 0,
+                                                                      commentsInRange: 0,
+                                                                      byDate: {},
+                                                                      estimateByDate: {},
+                                                                      quality: {
+                                                                          hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                                                                          hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                                                                          labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                                                                          hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
+                                                                          estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                                                                          spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                                                                          spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
+                                                                          descriptionEditsInRange: 0,
+                                                                          largeOneOffSpends: [],
+                                                                      },
+                                                                      estimateCurrent: 0,
+                                                                  };
+                                                              }
+                                                              usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
+                                                              usersMap[uid].issues[issue.iid].estimateInRange = (usersMap[uid].issues[issue.iid].estimateInRange || 0) + share;
+                                                              usersMap[uid].issues[issue.iid].estimateByDate[noteKey] = (usersMap[uid].issues[issue.iid].estimateByDate[noteKey] || 0) + share;
+                                                          }
+                                                      }
+                                                  }
+                                              }
+                                          }
                                           }
                                     }
 
@@ -2209,6 +2416,7 @@ function master1() {
                         let daysFake = 0;
                         let healthyDays = 0;
                         let totalDays = daily.length;
+                        let activeDays = 0;
                         let totalSpent = 0;
                         let totalEstimate = 0;
                         let fakeDaysDetails = [];
@@ -2216,29 +2424,25 @@ function master1() {
                         // بررسی spend هر روز
                         for (const d of daily) {
                               totalSpent += d.spent;
-                              if (d.spent < targetMin) {
-                                    daysBelowMin += 1;
-                              } else if (d.spent >= targetMin && d.spent <= targetMax) {
-                                    healthyDays += 1;
-                              } else if (d.spent > targetMax && d.spent <= overworkSoft) {
-                                    daysAboveMax += 1;
-                              } else if (d.spent > overworkSoft) {
-                                    daysFake += 1;
-                                    fakeDaysDetails.push({ date: d.date, spent: d.spent });
+                              if (d.spent > 0) {
+                                    activeDays += 1;
+                                    if (d.spent < targetMin) {
+                                          daysBelowMin += 1;
+                                    } else if (d.spent >= targetMin && d.spent <= targetMax) {
+                                          healthyDays += 1;
+                                    } else if (d.spent > targetMax && d.spent <= overworkSoft) {
+                                          daysAboveMax += 1;
+                                    } else if (d.spent > overworkSoft) {
+                                          daysFake += 1;
+                                          fakeDaysDetails.push({ date: d.date, spent: d.spent });
+                                    }
                               }
                         }
 
-                        // محاسبه estimate به ازای هر یوزر با تقسیم بین assigneeها
+                        // محاسبه estimate از روی تغییرات ثبت‌شده در بازه (پایدار در برابر add/remove/change)
                         for (const iss of Object.values(u.issues)) {
-                              const estimate = Number(iss?.time_stats?.time_estimate) || 0;
-                              if (estimate > 0) {
-                                    const assigned = Array.isArray(iss.assignedIds) ? iss.assignedIds : [];
-                                    const shareCount = assigned.length || 1;
-                                    const share = estimate / shareCount;
-                                    if (assigned.includes(Number(u.userId))) {
-                                          totalEstimate += share;
-                                    }
-                              }
+                              const v = Number(iss?.estimateInRange) || 0;
+                              totalEstimate += v;
                         }
 
                         // بررسی spendهای یکجا (largeOneOffSpends)
@@ -2319,10 +2523,21 @@ function master1() {
                         u.daysFake = daysFake;
                         u.healthyDays = healthyDays;
                         u.totalDays = totalDays;
+                        u.activeDays = activeDays;
                         u.fakeDaysDetails = fakeDaysDetails;
                         u.largeOneOffSpendsCount = largeOneOffSpendsCount;
                         u.totalSpent = totalSpent;
                         u.totalEstimate = totalEstimate;
+                        // --- ساخت خلاصه روزانه estimate بر اساس per-issue estimateByDate ---
+                        const estimateDaily = workingDateKeys.map(k => {
+                              const estSum = Object.values(u.issues || {}).reduce((sum, iss) => sum + ((iss.estimateByDate && iss.estimateByDate[k]) || 0), 0);
+                              return {
+                                    date: k,
+                                    estimate: estSum,
+                                    estimate_hm: `${Math.floor(estSum / 3600)}h ${Math.floor((estSum % 3600) / 60)}m`,
+                              };
+                        });
+                        u.estimateDailySummary = estimateDaily;
                         u.dailySummary = daily.map(d => ({
                               date: d.date,
                               spent: d.spent,
@@ -2441,7 +2656,7 @@ function master1() {
                               totalSpent: u.totalSpent,
                               totalEstimate: u.totalEstimate,
                               spentToEstimate: u.totalEstimate > 0 ? Number((u.totalSpent / u.totalEstimate).toFixed(2)) : null,
-                              avgDailySpent: u.totalDays > 0 ? Math.round(u.totalSpent / u.totalDays) : 0,
+                              avgDailySpent: u.activeDays > 0 ? Math.round(u.totalSpent / u.activeDays) : 0,
                               realnessPercent: u.realnessPercent,
                               suspiciousIssueCount: u.suspiciousIssueCount,
                               totalIssueCount: u.totalIssueCount,
@@ -2501,14 +2716,7 @@ function master1() {
                         u.summary.trend = trend;
                         // --- شناسایی absence (روزهای بدون فعالیت) ---
                         const absenceDays = [];
-                        const allDates = [];
-                        let d = new Date(fromDate);
-                        while (d <= toDate) {
-                              if (d.getDay() !== 5 && d.getDay() !== 6) {
-                                    allDates.push(toKey(d));
-                              }
-                              d.setDate(d.getDate() + 1);
-                        }
+                        const allDates = workingDateKeys;
                         for (const date of allDates) {
                               const spent = u.byDate && u.byDate[date] ? u.byDate[date] : 0;
                               if (spent === 0) absenceDays.push(date);
@@ -2541,7 +2749,7 @@ function master1() {
                               u.totalDays = workingDaysCount;
                               if (u.summary) {
                                     u.summary.totalDays = workingDaysCount;
-                                    const newAvg = workingDaysCount > 0 ? Math.round((u.totalSpent || 0) / workingDaysCount) : 0;
+                                    const newAvg = (u.activeDays || 0) > 0 ? Math.round((u.totalSpent || 0) / (u.activeDays || 1)) : 0;
                                     u.summary.avgDailySpent = newAvg;
                               }
                         } catch (e) {}
@@ -2565,34 +2773,7 @@ function master1() {
                                     u.summary.trend = trend;
                               }
                         } catch (e) {}
-                        if (!u.absencePenalty) u.absencePenalty = 0;
-                        // --- absence penalty جدید و نمایی ---
-                        const minWorkingDays = allDates.length;
-                        const minTotalExpected = minWorkingDays * 8 * 3600 * 0.5; // ۵۰٪ حداقل مورد انتظار
-                        const absenceExpPenalty = absenceDays.length > 2 ? Math.min(0.7, 0.08 * Math.pow(absenceDays.length, 1.25)) : 0.08 * absenceDays.length;
-                        let absencePenalty = absenceExpPenalty;
-                        // اگر کل spend کمتر از ۵۰٪ حداقل مورد انتظار باشد، جریمه سنگین
-                        if (u.totalSpent < minTotalExpected) {
-                              absencePenalty += 0.25;
-                              u.summary.guidance.push('کل spend شما در این بازه کمتر از ۵۰٪ حداقل مورد انتظار است.');
-                        }
-                        absencePenalty = Math.min(0.9, absencePenalty);
-                        u.absencePenalty = absencePenalty;
-                        u.realnessPercent = Math.max(0, u.realnessPercent - absencePenalty * 100);
-                        // --- کاهش ملایم اضافه بر اساس نسبت غیبت‌های بسیار بالا ---
-                        try {
-                              const absenceRatio = (u.absenceCount || 0) / (u.totalDays || 1);
-                              let extraDrop = 0;
-                              if (absenceRatio >= 0.9) extraDrop = 20;
-                              else if (absenceRatio >= 0.75) extraDrop = 12;
-                              else if (absenceRatio >= 0.6) extraDrop = 8;
-                              if (extraDrop > 0) {
-                                    u.realnessPercent = Math.max(0, u.realnessPercent - extraDrop);
-                                    if (u.summary && Array.isArray(u.summary.guidance)) {
-                                          u.summary.guidance.push('به علت نسبت زیاد روزهای بدون فعالیت، امتیاز واقعیت کمی کاهش یافت.');
-                                    }
-                              }
-                        } catch (e) {}
+                        // عدم اعمال جریمه بابت absence طبق نیازمندی‌ها
                         if (!u.summary) u.summary = {};
                         if (!u.summary.guidance) u.summary.guidance = [];
                         // --- guidance تاریخ‌دار absence ---
@@ -2644,8 +2825,8 @@ function master1() {
                               }
                         }
                         qualityScoreBreakdown = qualityCountBreakdown > 0 ? qualityScoreBreakdown / qualityCountBreakdown : 0;
-                        // absence: نسبت روزهای absence به کل روزهای کاری (۰ تا ۱)
-                        const absenceRatioBreakdown = (u.absenceCount || 0) / (u.totalDays || 1);
+                        // absence: جریمه اعمال نمی‌شود؛ نسبت را صفر نگه می‌داریم
+                        const absenceRatioBreakdown = 0;
                         // totalScore: ترکیبی از وزن‌های پویا
                         let totalScore = Math.max(0, Math.min(1, weights.realness * realnessScoreBreakdown + weights.quality * qualityScoreBreakdown + weights.absence * (1 - absenceRatioBreakdown)));
                         // پاداش همراستایی spent و estimate در سطح یوزر (میانگین alignment آیتم‌ها)
@@ -2739,6 +2920,7 @@ function master1() {
                         summary: u.summary,
                         closedIssuesCount: Object.values(u.issues).filter(iss => iss.state === 'closed').length,
                         dailySummary: u.dailySummary,
+                        estimateDailySummary: u.estimateDailySummary,
                         issues: Object.values(u.issues).map(iss => ({
                               iid: iss.iid,
                               title: iss.title,
@@ -2749,6 +2931,8 @@ function master1() {
                               created_at: iss.created_at,
                               updated_at: iss.updated_at,
                               spentInRange: iss.spentInRange,
+                              estimateInRange: iss.estimateInRange,
+                              estimateByDate: iss.estimateByDate,
                               commentsInRange: iss.commentsInRange,
                               quality: iss.quality,
                               suspiciousReasons: iss.suspiciousReasons,
@@ -2796,6 +2980,7 @@ function master1() {
                               { header: 'Title', key: 'title', width: 40 },
                               { header: 'State', key: 'state', width: 12 },
                               { header: 'Spent (h)', key: 'spentH', width: 12 },
+                              { header: 'Estimate (h)', key: 'estimateH', width: 14 },
                               { header: 'Comments', key: 'comments', width: 10 },
                         ];
                         for (const u of results) {
@@ -2808,6 +2993,7 @@ function master1() {
                                           state: iss.state,
                                           spentH: ((iss.spentInRange || 0) / 3600).toFixed(2),
                                           comments: iss.commentsInRange || 0,
+                                          estimateH: ((iss.estimateInRange || 0) / 3600).toFixed(2),
                                     });
                               }
                         }
@@ -2842,10 +3028,15 @@ function master1() {
                               { header: 'Spent (s)', key: 'spent', width: 12 },
                               { header: 'Spent (h:m)', key: 'spent_hm', width: 14 },
                               { header: 'Is Absence', key: 'isAbsence', width: 12 },
+                              { header: 'Estimate (s)', key: 'estimate', width: 14 },
+                              { header: 'Estimate (h:m)', key: 'estimate_hm', width: 16 },
                         ];
                         for (const u of results) {
                               const daily = Array.isArray(u.dailySummary) ? u.dailySummary : [];
+                              const estDaily = Array.isArray(u.estimateDailySummary) ? u.estimateDailySummary : [];
+                              const estByDate = new Map(estDaily.map(d => [d.date, d]));
                               for (const d of daily) {
+                                    const e = estByDate.get(d.date);
                                     wsDaily.addRow({
                                           userId: u.userId,
                                           username: u.username,
@@ -2853,6 +3044,8 @@ function master1() {
                                           spent: d.spent || 0,
                                           spent_hm: d.spent_hm || '',
                                           isAbsence: d.isAbsence ? 'Y' : '',
+                                          estimate: e ? (e.estimate || 0) : 0,
+                                          estimate_hm: e ? (e.estimate_hm || '') : '',
                                     });
                               }
                         }
