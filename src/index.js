@@ -2121,12 +2121,16 @@ function master1() {
                                                                         // desiredDelta = toValue - current
                                                                         const curr = Number((usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id] && usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id].issues[issue.iid]?.estimateCurrent) || 0);
                                                                         desiredDelta = seconds - curr;
-                                                                  } else {
-                                                                        let seconds = 0;
-                                                                        let m;
-                                                                        const srcMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
-                                                                        const src = srcMatch ? srcMatch[1] : body;
-                                                                        while ((m = unitRe.exec(src)) !== null) {
+                                                            } else {
+                                                                  let seconds = 0;
+                                                                  let m;
+                                                                  // Support both orders:
+                                                                  // 1) "added 1w of time estimate"
+                                                                  // 2) "added time estimate of 1w"
+                                                                  const srcMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
+                                                                  const srcMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+estimate|estimate\s+time)\s+of\s+(.+?)(?:\.|$)/i);
+                                                                  const src = srcMatchA ? srcMatchA[1] : (srcMatchB ? srcMatchB[1] : body);
+                                                                  while ((m = unitRe.exec(src)) !== null) {
                                                                               const val = parseInt(m[1], 10);
                                                                               const unit = m[2].toLowerCase();
                                                                               if (Number.isNaN(val)) continue;
@@ -2545,14 +2549,48 @@ function master1() {
                         u.totalSpent = totalSpent;
                         u.totalEstimate = totalEstimate;
                         // --- ساخت خلاصه روزانه estimate بر اساس per-issue estimateByDate ---
-                        const estimateDaily = workingDateKeys.map(k => {
-                              const estSum = Object.values(u.issues || {}).reduce((sum, iss) => sum + ((iss.estimateByDate && iss.estimateByDate[k]) || 0), 0);
+                        let estimateDaily = workingDateKeys.map(k => {
+                              const issuesArr = [];
+                              let estSum = 0;
+                              for (const iss of Object.values(u.issues || {})) {
+                                    const v = (iss.estimateByDate && iss.estimateByDate[k]) || 0;
+                                    if (v > 0) {
+                                          issuesArr.push({ iid: iss.iid, seconds: v, hm: `${Math.floor(v / 3600)}h ${Math.floor((v % 3600) / 60)}m` });
+                                          estSum += v;
+                                    }
+                              }
+                              const issueIids = issuesArr.map(it => it.iid);
                               return {
                                     date: k,
                                     estimate: estSum,
                                     estimate_hm: `${Math.floor(estSum / 3600)}h ${Math.floor((estSum % 3600) / 60)}m`,
+                                    issues: issuesArr,
+                                    issueIids,
                               };
                         });
+                        // Fallback: if no estimate changes occurred within range but issues have current estimates,
+                        // attribute each issue's current time_estimate to the first in-range activity date for that issue
+                        // (or the first working day if no activity days), so users can see non-zero estimates in the period.
+                        const totalDailyEst = estimateDaily.reduce((s, d) => s + (d.estimate || 0), 0);
+                        if (totalDailyEst === 0 && workingDateKeys.length > 0) {
+                              const firstDay = workingDateKeys[0];
+                              for (const iss of Object.values(u.issues || {})) {
+                                    const currentEstimate = Number(iss?.time_stats?.time_estimate || 0);
+                                    if (!currentEstimate || currentEstimate <= 0) continue;
+                                    // find first in-range activity date for this issue for this user
+                                    const perDay = iss.byDate || {};
+                                    const activeDay = Object.keys(perDay)
+                                          .filter(k => workingDateKeys.includes(k) && Number(perDay[k] || 0) > 0)
+                                          .sort()[0] || firstDay;
+                                    const dayObj = estimateDaily.find(d => d.date === activeDay);
+                                    if (dayObj) {
+                                          dayObj.estimate += currentEstimate;
+                                          dayObj.estimate_hm = `${Math.floor(dayObj.estimate / 3600)}h ${Math.floor((dayObj.estimate % 3600) / 60)}m`;
+                                          dayObj.issues.push({ iid: iss.iid, seconds: currentEstimate, hm: `${Math.floor(currentEstimate / 3600)}h ${Math.floor((currentEstimate % 3600) / 60)}m` });
+                                          dayObj.issueIids = Array.from(new Set([...(dayObj.issueIids || []), iss.iid]));
+                                    }
+                              }
+                        }
                         u.estimateDailySummary = estimateDaily;
                         u.dailySummary = daily.map(d => ({
                               date: d.date,
