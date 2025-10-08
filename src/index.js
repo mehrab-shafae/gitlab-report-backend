@@ -2396,6 +2396,42 @@ function master1() {
                         }
                   }
 
+                  // --- اضافه کردن ایشوهای خالی برای هر کاربر ---
+                  for (const u of Object.values(usersMap)) {
+                        u.emptyIssues = [];
+                  }
+                  for (const issue of allIssues) {
+                        // ایشو خالی یعنی هیچ estimate و هیچ spent ندارد
+                        const isEmpty =
+                              (!issue.time_stats || (!Number(issue.time_stats.time_estimate) && !Number(issue.time_stats.total_time_spent))) ||
+                              (Number(issue.time_stats.time_estimate) === 0 && Number(issue.time_stats.total_time_spent) === 0);
+                        if (!isEmpty) continue;
+                        // کاربران assign شده به این ایشو
+                        const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
+                        const legacy = issue.assignee ? [issue.assignee] : [];
+                        const recipients = assignees.length > 0 ? assignees : legacy;
+                        for (const person of recipients) {
+                              if (!person || !person.id) continue;
+                              const uid = Number(person.id);
+                              if (!usersMap[uid]) continue;
+                              // اطلاعات کامل ایشو + isEmpty
+                              let u = usersMap[uid];
+                              u.emptyIssues.push({
+                                    iid: issue.iid,
+                                    title: issue.title,
+                                    description: issue.description,
+                                    state: issue.state,
+                                    labels: issue.labels,
+                                    time_stats: issue.time_stats,
+                                    milestone: issue.milestone,
+                                    created_at: issue.created_at,
+                                    updated_at: issue.updated_at,
+                                    assignees: recipients.map(a => a && a.id ? { id: a.id, username: a.username, name: a.name, avatar_url: a.avatar_url } : null).filter(Boolean),
+                                    isEmpty: true
+                              });
+                        }
+                  }
+
                   for (const u of Object.values(usersMap)) {
                         try {
                               const byDatePreview = Object.entries(u.byDate || {}).slice(0, 10);
@@ -3008,6 +3044,7 @@ function master1() {
                               quality: iss.quality,
                               suspiciousReasons: iss.suspiciousReasons,
                         })),
+                        emptyIssues: u.emptyIssues, // اضافه شد
                         labels: Array.from(u.labels),
                   }));
 
