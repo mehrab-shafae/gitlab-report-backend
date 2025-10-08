@@ -1460,14 +1460,18 @@ function master1() {
       });
 
       app.get('/activity-range', async (req, res) => {
-            // --- تعریف وزن‌های امتیازدهی ---
+            // --- تعریف وزن‌های امتیازدهی (قابل پیکربندی از query/env) ---
+            const wRealness = Number(req.query.w_realness ?? process.env.W_REALNESS ?? 0.5);
+            const wQuality = Number(req.query.w_quality ?? process.env.W_QUALITY ?? 0.3);
+            const wAbsence = Number(req.query.w_absence ?? process.env.W_ABSENCE ?? 0.2);
             const weights = {
-                  realness: 0.5, // واقعیت فعالیت
-                  quality: 0.3, // کیفیت ایشوها
-                  absence: 0.2, // غیبت
+                  realness: Number.isFinite(wRealness) ? wRealness : 0.5,
+                  quality: Number.isFinite(wQuality) ? wQuality : 0.3,
+                  absence: Number.isFinite(wAbsence) ? wAbsence : 0.2,
             };
             try {
                   const { users, from, to } = req.query;
+                  const attribution = (req.query.attribution || 'shared').toString().toLowerCase(); // 'author' | 'shared'
                   const NOTES_CONCURRENCY = Math.max(1, Number(process.env.ACTIVITY_NOTES_CONCURRENCY) || 10);
 
                   if (!users || !from || !to) {
@@ -1512,10 +1516,35 @@ function master1() {
                         return res.status(400).json({ message: 'فرمت تاریخ از/تا نامعتبر است' });
                   }
                   const pad2 = n => String(n).padStart(2, '0');
-                  const toKey = d => `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+                  // timezone offset in minutes; positive => add minutes to UTC
+                  const tzOffsetMinutes = Number(req.query.tz_offset_minutes ?? process.env.TZ_OFFSET_MINUTES ?? 0);
+                  const toKey = d => {
+                        const base = d instanceof Date ? d : new Date(d);
+                        const adjMs = base.getTime() + (Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0) * 60000;
+                        const adj = new Date(adjMs);
+                        return `${adj.getUTCFullYear()}-${pad2(adj.getUTCMonth() + 1)}-${pad2(adj.getUTCDate())}`;
+                  };
                   const startKey = toKey(fromDate);
                   const endKey = toKey(toDate);
                   const isInRange = isoDate => isoDate >= startKey && isoDate <= endKey;
+                  // Build working-day calendar (Saturday to Thursday), respecting tz_offset
+                  const enumerateWorkingDates = () => {
+                        const out = [];
+                        const start = new Date(fromDate);
+                        const end = new Date(toDate);
+                        // iterate inclusive
+                        for (let d = new Date(start); d.getTime() <= end.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
+                              const key = toKey(d);
+                              // determine weekday on adjusted date
+                              const adjMs = d.getTime() + (Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0) * 60000;
+                              const adj = new Date(adjMs);
+                              const weekday = adj.getUTCDay(); // 0..6 (Sun..Sat)
+                              // Working days: Saturday(6) through Thursday(4), exclude Friday(5)
+                              if (weekday !== 5) out.push(key);
+                        }
+                        return out;
+                  };
+                  const workingDateKeys = enumerateWorkingDates();
 
                   let allIssues = [];
                   {
@@ -1621,38 +1650,50 @@ function master1() {
                                           console.log('[activity-range][issue] iid=', issue.iid, 'assignees=', recipients.map(p => p && p.id).filter(Boolean).join(','));
                                     } catch (e) {}
 
-                                    const [sysNotesResp, notesResp] = await Promise.all([
-                                          fetch(`${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?system=true&per_page=100`, {
-                                                method: 'GET',
-                                                headers: {
-                                                      'Content-Type': 'application/json',
-                                                      'PRIVATE-TOKEN': token,
-                                                      Connection: 'keep-alive',
-                                                },
-                                          }),
-                                          fetch(`${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?per_page=100`, {
-                                                method: 'GET',
-                                                headers: {
-                                                      'Content-Type': 'application/json',
-                                                      'PRIVATE-TOKEN': token,
-                                                      Connection: 'keep-alive',
-                                                },
-                                          }),
+                                    // paginate system notes
+                                    const fetchAllNotes = async (systemFlag) => {
+                                          let page = 1;
+                                          const out = [];
+                                          while (true) {
+                                                const url = `${baseUUrl}/projects/${projectId}/issues/${issue.iid}/notes?${systemFlag ? 'system=true&' : ''}per_page=100&page=${page}`;
+                                                const r = await fetch(url, {
+                                                      method: 'GET',
+                                                      headers: {
+                                                            'Content-Type': 'application/json',
+                                                            'PRIVATE-TOKEN': token,
+                                                            Connection: 'keep-alive',
+                                                      },
+                                                });
+                                                if (!r.ok) break;
+                                                const chunk = await r.json();
+                                                if (!Array.isArray(chunk) || chunk.length === 0) break;
+                                                out.push(...chunk);
+                                                const next = r.headers.get('x-next-page');
+                                                if (!next || next === '0' || chunk.length < 100) break;
+                                                page = parseInt(next, 10) || page + 1;
+                                          }
+                                          return out;
+                                    };
+
+                                    const [sysNotes, userNotes] = await Promise.all([
+                                          fetchAllNotes(true),
+                                          fetchAllNotes(false),
                                     ]);
 
-                                    if (sysNotesResp.ok) {
-                                          const notes = await sysNotesResp.json();
+                                    if (Array.isArray(sysNotes)) {
+                                          const notes = [...sysNotes].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
                                           try {
                                                 console.log('[activity-range][notes][system] iid=', issue.iid, 'count=', Array.isArray(notes) ? notes.length : 0);
                                           } catch (e) {}
                                           for (const note of notes) {
                                                 if (!note?.body || !note?.created_at || !note?.author?.id) continue;
-                                                const noteKey = new Date(note.created_at).toISOString().slice(0, 10);
+                                                const noteKey = toKey(note.created_at);
                                                 const authorId = Number(note.author.id);
                                                 const body = String(note.body).toLowerCase();
 
                                                 // --- special-case: remove_time_spent (no amount, clears all spent) ---
                                                 if (/\bremoved\s+(?:all\s+)?(?:time\s+spent|spent\s+time)\b/i.test(body)) {
+                                                      // Apply remove-all regardless of note date; it zeroes out all tracked spent for this issue in range
                                                       const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
                                                       try {
                                                             console.log('[activity-range][parse][remove_time_spent][pre-author-check]', {
@@ -1692,9 +1733,7 @@ function master1() {
                                                       continue;
                                                 }
 
-                                                if (!userIdsSet.has(authorId)) continue;
-                                                const isAssignee = recipients.some(p => p && Number(p.id) === authorId);
-                                                if (!isAssignee) continue;
+                                                // Do not require author to be selected or an assignee; attribution logic below will handle distribution
 
                                                 const delMatch = body.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
                                                 if (delMatch) {
@@ -1703,7 +1742,7 @@ function master1() {
 
                                                       if (!isInRange(fromDateKey)) continue;
                                                       let seconds = 0;
-                                                      const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                                                      const unitRe2 = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
                                                       let m;
                                                       const H = 3600;
                                                       const D = 8 * H;
@@ -1720,12 +1759,19 @@ function master1() {
                                                             else if (unit === 'm') seconds += val * 60;
                                                             else if (unit === 's') seconds += val;
                                                       }
+                                                      seconds = Math.abs(seconds);
                                                       if (seconds === 0) continue;
 
-                                                      // توزیع spend بین تمام assigneeها (هم‌راستا با totalSpent سراسری)
-                                                      const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
-                                                      const shareCount = assigneesForShare.length || 1;
-                                                      const shareSeconds = seconds / shareCount;
+                                                      // Attribution strategy: author-first vs shared
+                                                      // Determine attribution targets
+                                                      let assigneesForShare = recipients;
+                                                      let baseCount = assigneesForShare.length || 1;
+                                                      let shareSeconds = seconds / baseCount;
+                                                      if (attribution === 'author') {
+                                                            assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
+                                                            baseCount = 1;
+                                                            shareSeconds = seconds;
+                                                      }
                                                       try {
                                                             console.log('[activity-range][parse][delete]', {
                                                                   iid: issue.iid,
@@ -1740,6 +1786,7 @@ function master1() {
                                                       } catch (e) {}
                                                       for (const person of assigneesForShare) {
                                                             const uidShare = Number(person.id);
+                                                            if (!userIdsSet.has(uidShare)) continue;
                                                             if (!usersMap[uidShare]) {
                                                                   usersMap[uidShare] = {
                                                                         userId: uidShare,
@@ -1782,16 +1829,20 @@ function master1() {
                                                                         issue.labels.forEach(l => usersMap[uidShare].labels.add(l));
                                                                   }
                                                             }
-                                                            usersMap[uidShare].totalSpent -= shareSeconds;
-                                                            usersMap[uidShare].issues[issue.iid].spentInRange -= shareSeconds;
-                                                            usersMap[uidShare].byDate[fromDateKey] = (usersMap[uidShare].byDate[fromDateKey] || 0) - shareSeconds;
-                                                            usersMap[uidShare].issues[issue.iid].byDate[fromDateKey] = (usersMap[uidShare].issues[issue.iid].byDate[fromDateKey] || 0) - shareSeconds;
+                                                            const currentIssueDay = Number(usersMap[uidShare].issues[issue.iid].byDate[fromDateKey] || 0);
+                                                            const applied = Math.min(currentIssueDay, Math.abs(shareSeconds));
+                                                            if (applied <= 0) continue;
+                                                            const appliedSigned = -applied;
+                                                            usersMap[uidShare].totalSpent += appliedSigned;
+                                                            usersMap[uidShare].issues[issue.iid].spentInRange = Math.max(0, (usersMap[uidShare].issues[issue.iid].spentInRange || 0) + appliedSigned);
+                                                            usersMap[uidShare].byDate[fromDateKey] = Math.max(0, (usersMap[uidShare].byDate[fromDateKey] || 0) + appliedSigned);
+                                                            usersMap[uidShare].issues[issue.iid].byDate[fromDateKey] = Math.max(0, currentIssueDay + appliedSigned);
                                                             try {
                                                                   console.log('[activity-range][apply][delete]', {
                                                                         userId: uidShare,
                                                                         iid: issue.iid,
                                                                         forDate: fromDateKey,
-                                                                        delta: -shareSeconds,
+                                                                        delta: appliedSigned,
                                                                         totalSpent: usersMap[uidShare].totalSpent,
                                                                   });
                                                             } catch (e) {}
@@ -1804,7 +1855,7 @@ function master1() {
                                                 const isSub = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && (body.includes('time spent') || body.includes('spent time'));
                                                 if (!isAdd && !isSub) continue;
                                                 let seconds = 0;
-                                                const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                                                const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
                                                 let mm;
                                                 const H = 3600;
                                                 const D = 8 * H;
@@ -1824,13 +1875,20 @@ function master1() {
                                                       else if (unit === 'm') seconds += val * 60;
                                                       else if (unit === 's') seconds += val;
                                                 }
+                                                seconds = Math.abs(seconds);
                                                 if (seconds === 0) continue;
 
-                                                // توزیع بین همه assigneeها
-                                                const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
-                                                const shareCount = assigneesForShare.length || 1;
+                                                // Attribution strategy: author-first vs shared
+                                                // Determine attribution targets and share by total assignees count to avoid inflating shares
+                                                let assigneesForShare = recipients;
+                                                let baseCount = assigneesForShare.length || 1;
                                                 const delta = isSub ? -seconds : seconds;
-                                                const shareSeconds = delta / shareCount;
+                                                let shareSeconds = delta / baseCount;
+                                                if (attribution === 'author') {
+                                                      assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
+                                                      baseCount = 1;
+                                                      shareSeconds = delta;
+                                                }
                                                 try {
                                                       console.log('[activity-range][parse][change]', {
                                                             iid: issue.iid,
@@ -1847,6 +1905,7 @@ function master1() {
                                                 } catch (e) {}
                                                 for (const person of assigneesForShare) {
                                                       const uidShare = Number(person.id);
+                                                      if (!userIdsSet.has(uidShare)) continue;
                                                       if (!usersMap[uidShare]) {
                                                             usersMap[uidShare] = {
                                                                   userId: uidShare,
@@ -1890,14 +1949,21 @@ function master1() {
                                                                   issue.labels.forEach(l => usersMap[uidShare].labels.add(l));
                                                             }
                                                       }
-                                                      usersMap[uidShare].totalSpent += shareSeconds;
-                                                      usersMap[uidShare].issues[issue.iid].spentInRange += shareSeconds;
-                                                      usersMap[uidShare].byDate[noteKey] = (usersMap[uidShare].byDate[noteKey] || 0) + shareSeconds;
-                                                      usersMap[uidShare].issues[issue.iid].byDate[noteKey] = (usersMap[uidShare].issues[issue.iid].byDate[noteKey] || 0) + shareSeconds;
-                                                      if (isAdd && delta >= 8 * 3600) {
+                                                      let appliedDelta = shareSeconds;
+                                                      if (isSub) {
+                                                            const currentIssueDay = Number(usersMap[uidShare].issues[issue.iid].byDate[noteKey] || 0);
+                                                            const appliedAbs = Math.min(currentIssueDay, Math.abs(shareSeconds));
+                                                            if (appliedAbs <= 0) continue;
+                                                            appliedDelta = -appliedAbs;
+                                                      }
+                                                      usersMap[uidShare].totalSpent += appliedDelta;
+                                                      usersMap[uidShare].issues[issue.iid].spentInRange = Math.max(0, (usersMap[uidShare].issues[issue.iid].spentInRange || 0) + appliedDelta);
+                                                      usersMap[uidShare].byDate[noteKey] = Math.max(0, (usersMap[uidShare].byDate[noteKey] || 0) + appliedDelta);
+                                                      usersMap[uidShare].issues[issue.iid].byDate[noteKey] = Math.max(0, (usersMap[uidShare].issues[issue.iid].byDate[noteKey] || 0) + appliedDelta);
+                                                      if (isAdd && Math.abs(appliedDelta) >= 8 * 3600) {
                                                             usersMap[uidShare].issues[issue.iid].quality.largeOneOffSpends.push({
                                                                   at: note.created_at,
-                                                                  seconds: shareSeconds,
+                                                                  seconds: appliedDelta,
                                                                   dateKey: noteKey,
                                                             });
                                                       }
@@ -1906,7 +1972,7 @@ function master1() {
                                                                   userId: uidShare,
                                                                   iid: issue.iid,
                                                                   dateKey: noteKey,
-                                                                  delta: shareSeconds,
+                                                                  delta: appliedDelta,
                                                                   totalSpent: usersMap[uidShare].totalSpent,
                                                             });
                                                       } catch (e) {}
@@ -1919,30 +1985,47 @@ function master1() {
                                                                   issue_iid: issue.iid,
                                                             });
                                                       }
-                                                      if (isAdd && delta >= 8 * 3600) {
-                                                            usersMap[uidShare].issues[issue.iid].quality.largeOneOffSpends.push({
-                                                                  at: note.created_at,
-                                                                  seconds: shareSeconds,
-                                                            });
-                                                      }
                                                 }
                                           }
                                     }
 
-                                    if (notesResp.ok) {
-                                          const notes = await notesResp.json();
+                                    if (Array.isArray(userNotes)) {
+                                          const notes = [...userNotes].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
                                           try {
                                                 console.log('[activity-range][notes][user] iid=', issue.iid, 'count=', Array.isArray(notes) ? notes.length : 0);
                                           } catch (e) {}
                                           for (const note of notes) {
                                                 if (note?.system) continue;
                                                 if (!note?.created_at || !note?.author?.id) continue;
-                                                const noteKey = new Date(note.created_at).toISOString().slice(0, 10);
+                                                const noteKey = toKey(note.created_at);
                                                 if (!isInRange(noteKey)) continue;
                                                 const authorId = Number(note.author.id);
                                                 if (!userIds.includes(authorId)) continue;
                                                 const isAssignee = recipients.some(p => p && Number(p.id) === authorId);
-                                                if (!isAssignee) continue;
+                                                // collaboration: user commented but is not an assignee
+                                                if (!isAssignee) {
+                                                      // initialize user record if needed
+                                                      if (!usersMap[authorId]) {
+                                                            usersMap[authorId] = {
+                                                                  userId: authorId,
+                                                                  username: note.author.username || '',
+                                                                  name: note.author.name || '',
+                                                                  avatar_url: note.author.avatar_url || '',
+                                                                  totalSpent: 0,
+                                                                  issues: {},
+                                                                  labels: new Set(),
+                                                                  byDate: {},
+                                                                  collaborationNotes: [],
+                                                            };
+                                                      }
+                                                      if (!Array.isArray(usersMap[authorId].collaborationNotes)) usersMap[authorId].collaborationNotes = [];
+                                                      usersMap[authorId].collaborationNotes.push({
+                                                            issue_iid: issue.iid,
+                                                            at: note.created_at,
+                                                            dateKey: noteKey,
+                                                      });
+                                                      continue;
+                                                }
 
                                                 if (!usersMap[authorId]) {
                                                       usersMap[authorId] = {
@@ -1990,7 +2073,7 @@ function master1() {
                                                 const lastEditedAt = note.last_edited_at || note.updated_at;
                                                 const editor = note.last_edited_by || note.editor || note.author;
                                                 if (lastEditedAt) {
-                                                      const editKey = new Date(lastEditedAt).toISOString().slice(0, 10);
+                                                const editKey = toKey(lastEditedAt);
                                                       if (isInRange(editKey) && editor && Number(editor.id) === authorId && note.created_at !== lastEditedAt) {
                                                             const bodyStr = typeof note.body === 'string' ? note.body.toLowerCase() : '';
                                                             if (bodyStr.includes('description') || bodyStr.includes('edited') || bodyStr.includes('changed')) {
@@ -2005,7 +2088,7 @@ function master1() {
                   }
 
                   for (const issue of allIssues) {
-                        const updatedKey = issue.updated_at ? new Date(issue.updated_at).toISOString().slice(0, 10) : null;
+                                                const updatedKey = issue.updated_at ? toKey(issue.updated_at) : null;
                         if (!updatedKey || !isInRange(updatedKey)) continue;
                         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
                         const legacy = issue.assignee ? [issue.assignee] : [];
@@ -2046,7 +2129,7 @@ function master1() {
                   }
 
                   for (const issue of allIssues) {
-                        const createdKey = issue.created_at ? new Date(issue.created_at).toISOString().slice(0, 10) : null;
+                        const createdKey = issue.created_at ? toKey(issue.created_at) : null;
                         if (!createdKey || !isInRange(createdKey)) continue;
                         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
                         const legacy = issue.assignee ? [issue.assignee] : [];
@@ -2101,8 +2184,7 @@ function master1() {
                         let realnessSum = 0;
                         let suspiciousIssueCount = 0;
 
-                        const dailyKeys = Object.keys(u.byDate || {}).sort();
-                        const daily = dailyKeys.map(k => {
+                        const daily = workingDateKeys.map(k => {
                               const issuesArr = Object.values(u.issues || {})
                                     .map(iss => ({ iid: iss.iid, spent: (iss.byDate && iss.byDate[k]) || 0 }))
                                     .filter(x => x.spent !== 0);
@@ -2114,10 +2196,14 @@ function master1() {
                               };
                         });
                         const H = 3600;
-                        const targetMin = 7 * H;
-                        const targetMax = 8 * H;
-                        const overworkSoft = 9 * H;
-                        const fakeSpendThreshold = 5 * H;
+                        const qTargetMinH = Number(req.query.min_hours ?? process.env.MIN_HOURS ?? 7);
+                        const qTargetMaxH = Number(req.query.max_hours ?? process.env.MAX_HOURS ?? 8);
+                        const qOverworkSoftH = Number(req.query.overwork_soft_hours ?? process.env.OVERWORK_SOFT_HOURS ?? 9);
+                        const qFakeSpendH = Number(req.query.fake_spend_hours ?? process.env.FAKE_SPEND_HOURS ?? 5);
+                        const targetMin = (Number.isFinite(qTargetMinH) ? qTargetMinH : 7) * H;
+                        const targetMax = (Number.isFinite(qTargetMaxH) ? qTargetMaxH : 8) * H;
+                        const overworkSoft = (Number.isFinite(qOverworkSoftH) ? qOverworkSoftH : 9) * H;
+                        const fakeSpendThreshold = (Number.isFinite(qFakeSpendH) ? qFakeSpendH : 5) * H;
                         let daysBelowMin = 0;
                         let daysAboveMax = 0;
                         let daysFake = 0;
@@ -2248,19 +2334,19 @@ function master1() {
                         for (const iss of Object.values(u.issues)) {
                               const q = iss.quality || {};
                               // توزیع spend در روزهای مختلف
-                              const spentDistribution = {};
-                              if (iss.spentInRange && u.byDate) {
-                                    for (const [date, spent] of Object.entries(u.byDate)) {
-                                          if (spent > 0) spentDistribution[date] = spent;
+                                    const spentDistribution = {};
+                                    if (iss.spentInRange && iss.byDate) {
+                                          for (const [date, spent] of Object.entries(iss.byDate)) {
+                                                if (spent > 0) spentDistribution[date] = spent;
+                                          }
                                     }
-                              }
-                              q.spentDistributionDays = Object.keys(spentDistribution).length;
+                                    q.spentDistributionDays = Object.keys(spentDistribution).length;
                               // تعداد ویرایش توضیح
                               q.descriptionEdits = q.descriptionEditsInRange || 0;
                               // نسبت spent به estimate
                               const estimate = Number(iss?.time_stats?.time_estimate) || 0;
-                              const totalSpent = Number(iss?.time_stats?.total_time_spent) || 0;
-                              q.spentToEstimateRatio = estimate > 0 ? Number(totalSpent / estimate).toFixed(2) : null;
+                              const spentInRange = Number(iss?.spentInRange) || 0;
+                              q.spentToEstimateRatio = estimate > 0 ? Number(spentInRange / estimate).toFixed(2) : null;
                               // تعداد کامنت مفید
                               q.commentsInRange = iss.commentsInRange || 0;
                               // --- شاخص کیفیت کلی ایشو (qualityScore)
