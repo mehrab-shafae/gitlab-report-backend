@@ -2121,16 +2121,16 @@ function master1() {
                                                                         // desiredDelta = toValue - current
                                                                         const curr = Number((usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id] && usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id].issues[issue.iid]?.estimateCurrent) || 0);
                                                                         desiredDelta = seconds - curr;
-                                                            } else {
-                                                                  let seconds = 0;
-                                                                  let m;
-                                                                  // Support both orders:
-                                                                  // 1) "added 1w of time estimate"
-                                                                  // 2) "added time estimate of 1w"
-                                                                  const srcMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
-                                                                  const srcMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+estimate|estimate\s+time)\s+of\s+(.+?)(?:\.|$)/i);
-                                                                  const src = srcMatchA ? srcMatchA[1] : (srcMatchB ? srcMatchB[1] : body);
-                                                                  while ((m = unitRe.exec(src)) !== null) {
+                                                                  } else {
+                                                                        let seconds = 0;
+                                                                        let m;
+                                                                        // Support both orders:
+                                                                        // 1) "added 1w of time estimate"
+                                                                        // 2) "added time estimate of 1w"
+                                                                        const srcMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
+                                                                        const srcMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+estimate|estimate\s+time)\s+of\s+(.+?)(?:\.|$)/i);
+                                                                        const src = srcMatchA ? srcMatchA[1] : srcMatchB ? srcMatchB[1] : body;
+                                                                        while ((m = unitRe.exec(src)) !== null) {
                                                                               const val = parseInt(m[1], 10);
                                                                               const unit = m[2].toLowerCase();
                                                                               if (Number.isNaN(val)) continue;
@@ -2402,9 +2402,7 @@ function master1() {
                   }
                   for (const issue of allIssues) {
                         // ایشو خالی یعنی هیچ estimate و هیچ spent ندارد
-                        const isEmpty =
-                              (!issue.time_stats || (!Number(issue.time_stats.time_estimate) && !Number(issue.time_stats.total_time_spent))) ||
-                              (Number(issue.time_stats.time_estimate) === 0 && Number(issue.time_stats.total_time_spent) === 0);
+                        const isEmpty = !issue.time_stats || (!Number(issue.time_stats.time_estimate) && !Number(issue.time_stats.total_time_spent)) || (Number(issue.time_stats.time_estimate) === 0 && Number(issue.time_stats.total_time_spent) === 0);
                         if (!isEmpty) continue;
                         // کاربران assign شده به این ایشو
                         const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
@@ -2426,8 +2424,8 @@ function master1() {
                                     milestone: issue.milestone,
                                     created_at: issue.created_at,
                                     updated_at: issue.updated_at,
-                                    assignees: recipients.map(a => a && a.id ? { id: a.id, username: a.username, name: a.name, avatar_url: a.avatar_url } : null).filter(Boolean),
-                                    isEmpty: true
+                                    assignees: recipients.map(a => (a && a.id ? { id: a.id, username: a.username, name: a.name, avatar_url: a.avatar_url } : null)).filter(Boolean),
+                                    isEmpty: true,
                               });
                         }
                   }
@@ -2632,9 +2630,10 @@ function master1() {
                                     if (!currentEstimate || currentEstimate <= 0) continue;
                                     // find first in-range activity date for this issue for this user
                                     const perDay = iss.byDate || {};
-                                    const activeDay = Object.keys(perDay)
-                                          .filter(k => workingDateKeys.includes(k) && Number(perDay[k] || 0) > 0)
-                                          .sort()[0] || firstDay;
+                                    const activeDay =
+                                          Object.keys(perDay)
+                                                .filter(k => workingDateKeys.includes(k) && Number(perDay[k] || 0) > 0)
+                                                .sort()[0] || firstDay;
                                     const dayObj = estimateDaily.find(d => d.date === activeDay);
                                     if (dayObj) {
                                           dayObj.estimate += currentEstimate;
