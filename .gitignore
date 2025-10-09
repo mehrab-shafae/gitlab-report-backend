@@ -27,8 +27,12 @@ yarn.lock
 # local env files
 .env
 
+/.env
+/.env/
+
 # vercel
 .vercel
 uploads/
 
 *xlsx
+
