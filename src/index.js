@@ -1251,6 +1251,7 @@ function master1() {
                                                             if (usersMap[authorId] && usersMap[authorId].issues[issue.iid] && usersMap[authorId].issues[issue.iid].time_stats) {
                                                                   usersMap[authorId].issues[issue.iid].time_stats.time_estimate = 0;
                                                             }
+                                                            
                                                             console.log('[activity-range][apply][remove_estimate]', { iid: issue.iid, at: note.created_at, author: authorId });
                                                       } catch (e) {}
                                                       // do not continue; other patterns might also apply, but typically it's only estimate removal
@@ -1280,10 +1281,6 @@ function master1() {
                                                 //       const val = parseInt(m[1], 10);
                                                 //       const unit = m[2].toLowerCase();
                                                 //       if (Number.isNaN(val)) continue;
-                                                //       const H = 3600;
-                                                //       const D = 8 * H;
-                                                //       const W = 5 * D;
-                                                //       const MO = 4 * W;
                                                 //       if (unit === 'mo') seconds += val * MO;
                                                 //       else if (unit === 'w') seconds += val * W;
                                                 //       else if (unit === 'd') seconds += val * D;
@@ -2608,7 +2605,6 @@ function master1() {
                         u.daysPositive = daysPositive; // 60%..90%
                         u.daysOver90NoPoint = daysOver90NoPoint; // >90%..<=10h
                         u.totalSpent = totalSpent;
-                        u.totalEstimate = totalEstimate;
                         // --- ساخت خلاصه روزانه estimate بر اساس per-issue estimateByDate ---
                         let estimateDaily = workingDateKeys.map(k => {
                               const issuesArr = [];
@@ -2653,6 +2649,9 @@ function master1() {
                                     }
                               }
                         }
+                        // پس از اعمال fallback، totalEstimate را از روی خلاصه نهایی روزانه محاسبه کن
+                        const totalEstimateFinal = estimateDaily.reduce((s, d) => s + (d.estimate || 0), 0);
+                        u.totalEstimate = totalEstimateFinal;
                         u.estimateDailySummary = estimateDaily;
                         u.dailySummary = daily.map(d => ({
                               date: d.date,
@@ -3037,6 +3036,7 @@ function master1() {
                         closedIssuesCount: Object.values(u.issues).filter(iss => iss.state === 'closed').length,
                         dailySummary: u.dailySummary,
                         estimateDailySummary: u.estimateDailySummary,
+                        totalEstimate: Array.isArray(u.estimateDailySummary) ? u.estimateDailySummary.reduce((s, e) => s + (e.estimate || 0), 0) : 0,
                         issues: Object.values(u.issues).map(iss => ({
                               iid: iss.iid,
                               title: iss.title,
