@@ -263,6 +263,7 @@ function master1() {
                   data: activeUser,
             });
       });
+
       app.get('/labels', async (req, res) => {
             try {
                   let andLabels = [];
@@ -1252,7 +1253,7 @@ function master1() {
                                                             if (usersMap[authorId] && usersMap[authorId].issues[issue.iid] && usersMap[authorId].issues[issue.iid].time_stats) {
                                                                   usersMap[authorId].issues[issue.iid].time_stats.time_estimate = 0;
                                                             }
-                                                            
+
                                                             console.log('[activity-range][apply][remove_estimate]', { iid: issue.iid, at: note.created_at, author: authorId });
                                                       } catch (e) {}
                                                       // do not continue; other patterns might also apply, but typically it's only estimate removal
