@@ -976,7 +976,10 @@ function master1() {
 
       app.get('/daily', async (req, res) => {
             try {
-                  const targetDate = new Date().toISOString().slice(0, 10);
+                  // allow overriding the single-day target via query param 'date' (YYYY-MM-DD)
+                  const qDate = req && req.query ? String(req.query.date || '').trim() : '';
+                  const isYmd = /^\d{4}-\d{2}-\d{2}$/.test(qDate);
+                  const targetDate = isYmd && !Number.isNaN(Date.parse(qDate)) ? qDate : new Date().toISOString().slice(0, 10);
 
                   let allIssues = [];
                   let page = 1;
