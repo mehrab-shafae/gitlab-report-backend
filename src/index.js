@@ -576,48 +576,50 @@ function master1() {
         const lowered = body.toLowerCase();
         // support deleted/removed, and both "spent time" and "time spent", with optional date keywords
         const del = lowered.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
-        const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
-        const H = 3600;
-        const D = 8 * H;
-        const W = 5 * D;
-        const MO = 4 * W;
+      //   const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+      //   const H = 3600;
+      //   const D = 8 * H;
+      //   const W = 5 * D;
+      //   const MO = 4 * W;
         if (del) {
           const duration = del[1];
           const forDate = del[2];
           let seconds = 0;
-          let m;
-          while ((m = unitRe.exec(duration)) !== null) {
-            const val = parseInt(m[1], 10);
-            const unit = m[2].toLowerCase();
-            if (Number.isNaN(val)) continue;
-            if (unit === 'mo') seconds += val * MO;
-            else if (unit === 'w') seconds += val * W;
-            else if (unit === 'd') seconds += val * D;
-            else if (unit === 'h') seconds += val * H;
-            else if (unit === 'm') seconds += val * 60;
-            else if (unit === 's') seconds += val;
-          }
+      //     let m;
+      //     while ((m = unitRe.exec(duration)) !== null) {
+      //       const val = parseInt(m[1], 10);
+      //       const unit = m[2].toLowerCase();
+      //       if (Number.isNaN(val)) continue;
+      //       if (unit === 'mo') seconds += val * MO;
+      //       else if (unit === 'w') seconds += val * W;
+      //       else if (unit === 'd') seconds += val * D;
+      //       else if (unit === 'h') seconds += val * H;
+      //       else if (unit === 'm') seconds += val * 60;
+      //       else if (unit === 's') seconds += val;
+      //     }
+          seconds = parseDurationString(duration);
           return { seconds: -seconds, forDate };
         }
         const isAdd = lowered.includes('added') && (lowered.includes('time spent') || lowered.includes('spent time'));
         const isSub = (lowered.includes('subtracted') || lowered.includes('removed') || lowered.includes('deleted')) && (lowered.includes('time spent') || lowered.includes('spent time'));
         if (!isAdd && !isSub) return { seconds: 0, forDate: null };
         let seconds = 0;
-        let mm;
+      //   let mm;
         // استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
         const addSubMatch = lowered.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
         const parseSource = addSubMatch ? addSubMatch[1] : lowered;
-        while ((mm = unitRe.exec(parseSource)) !== null) {
-          const val = parseInt(mm[1], 10);
-          const unit = mm[2].toLowerCase();
-          if (Number.isNaN(val)) continue;
-          if (unit === 'mo') seconds += val * MO;
-          else if (unit === 'w') seconds += val * W;
-          else if (unit === 'd') seconds += val * D;
-          else if (unit === 'h') seconds += val * H;
-          else if (unit === 'm') seconds += val * 60;
-          else if (unit === 's') seconds += val;
-        }
+      //   while ((mm = unitRe.exec(parseSource)) !== null) {
+      //     const val = parseInt(mm[1], 10);
+      //     const unit = mm[2].toLowerCase();
+      //     if (Number.isNaN(val)) continue;
+      //     if (unit === 'mo') seconds += val * MO;
+      //     else if (unit === 'w') seconds += val * W;
+      //     else if (unit === 'd') seconds += val * D;
+      //     else if (unit === 'h') seconds += val * H;
+      //     else if (unit === 'm') seconds += val * 60;
+      //     else if (unit === 's') seconds += val;
+      //   }
+        seconds = parseDurationString(parseSource);
         if (seconds === 0) return { seconds: 0, forDate: null };
         return { seconds: isSub ? -seconds : seconds, forDate: null };
       };
@@ -851,50 +853,52 @@ function master1() {
       const parseSpentFromNote = body => {
         if (typeof body !== 'string') return { seconds: 0, forDate: null };
         const lowered = body.toLowerCase();
-        const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
-        const H = 3600;
-        const D = 8 * H;
-        const W = 5 * D;
-        const MO = 4 * W;
+      //   const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi;
+      //   const H = 3600;
+      //   const D = 8 * H;
+      //   const W = 5 * D;
+      //   const MO = 4 * W;
 
         const del = lowered.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
         if (del) {
           const duration = del[1];
           const forDate = del[2];
           let seconds = 0;
-          let m;
-          while ((m = unitRe.exec(duration)) !== null) {
-            const val = parseInt(m[1], 10);
-            const unit = m[2].toLowerCase();
-            if (Number.isNaN(val)) continue;
-            if (unit === 'mo') seconds += val * MO;
-            else if (unit === 'w') seconds += val * W;
-            else if (unit === 'd') seconds += val * D;
-            else if (unit === 'h') seconds += val * H;
-            else if (unit === 'm') seconds += val * 60;
-            else if (unit === 's') seconds += val;
-          }
+      //     let m;
+      //     while ((m = unitRe.exec(duration)) !== null) {
+      //       const val = parseInt(m[1], 10);
+      //       const unit = m[2].toLowerCase();
+      //       if (Number.isNaN(val)) continue;
+      //       if (unit === 'mo') seconds += val * MO;
+      //       else if (unit === 'w') seconds += val * W;
+      //       else if (unit === 'd') seconds += val * D;
+      //       else if (unit === 'h') seconds += val * H;
+      //       else if (unit === 'm') seconds += val * 60;
+      //       else if (unit === 's') seconds += val;
+      //     }
+          seconds = parseDurationString(duration);
           return { seconds: -seconds, forDate };
         }
         const isAdd = lowered.includes('added') && (lowered.includes('time spent') || lowered.includes('spent time'));
         const isSub = (lowered.includes('subtracted') || lowered.includes('removed') || lowered.includes('deleted')) && (lowered.includes('time spent') || lowered.includes('spent time'));
         if (!isAdd && !isSub) return { seconds: 0, forDate: null };
         let seconds = 0;
-        let mm;
+      //   let mm;
         // استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
         const addSubMatch = lowered.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
         const parseSource = addSubMatch ? addSubMatch[1] : lowered;
-        while ((mm = unitRe.exec(parseSource)) !== null) {
-          const val = parseInt(mm[1], 10);
-          const unit = mm[2].toLowerCase();
-          if (Number.isNaN(val)) continue;
-          if (unit === 'mo') seconds += val * MO;
-          else if (unit === 'w') seconds += val * W;
-          else if (unit === 'd') seconds += val * D;
-          else if (unit === 'h') seconds += val * H;
-          else if (unit === 'm') seconds += val * 60;
-          else if (unit === 's') seconds += val;
-        }
+      //   while ((mm = unitRe.exec(parseSource)) !== null) {
+      //     const val = parseInt(mm[1], 10);
+      //     const unit = mm[2].toLowerCase();
+      //     if (Number.isNaN(val)) continue;
+      //     if (unit === 'mo') seconds += val * MO;
+      //     else if (unit === 'w') seconds += val * W;
+      //     else if (unit === 'd') seconds += val * D;
+      //     else if (unit === 'h') seconds += val * H;
+      //     else if (unit === 'm') seconds += val * 60;
+      //     else if (unit === 's') seconds += val;
+      //   }
+        seconds = parseDurationString(parseSource);
         return { seconds: isSub ? -seconds : seconds, forDate: null };
       };
 
@@ -1134,23 +1138,24 @@ function master1() {
                 if (fromDate !== targetDate) continue;
 
                 let seconds = 0;
-                const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
-                let mm;
-                while ((mm = unitRe2.exec(duration)) !== null) {
-                  const val = parseInt(mm[1], 10);
-                  const unit = mm[2].toLowerCase();
-                  if (Number.isNaN(val)) continue;
-                  const H = 3600;
-                  const D = 8 * H;
-                  const W = 5 * D;
-                  const MO = 4 * W;
-                  if (unit === 'mo') seconds += val * MO;
-                  else if (unit === 'w') seconds += val * W;
-                  else if (unit === 'd') seconds += val * D;
-                  else if (unit === 'h') seconds += val * H;
-                  else if (unit === 'm') seconds += val * 60;
-                  else if (unit === 's') seconds += val;
-                }
+            //     const unitRe2 = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
+            //     let mm;
+            //     while ((mm = unitRe2.exec(duration)) !== null) {
+            //       const val = parseInt(mm[1], 10);
+            //       const unit = mm[2].toLowerCase();
+            //       if (Number.isNaN(val)) continue;
+            //       const H = 3600;
+            //       const D = 8 * H;
+            //       const W = 5 * D;
+            //       const MO = 4 * W;
+            //       if (unit === 'mo') seconds += val * MO;
+            //       else if (unit === 'w') seconds += val * W;
+            //       else if (unit === 'd') seconds += val * D;
+            //       else if (unit === 'h') seconds += val * H;
+            //       else if (unit === 'm') seconds += val * 60;
+            //       else if (unit === 's') seconds += val;
+            //     }
+                seconds = parseDurationString(duration);
                 if (seconds === 0) continue;
                 const delta = -seconds;
 
@@ -1266,26 +1271,27 @@ function master1() {
                 const isSub = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && (body.includes('time spent') || body.includes('spent time'));
                 if (!isAdd && !isSub) continue;
                 let seconds = 0;
-                const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
-                let m;
+            //     const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
+            //     let m;
                 // تلاش برای استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
                 const addSubMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
                 const parseSource = addSubMatch ? addSubMatch[1] : body;
-                while ((m = unitRe.exec(parseSource)) !== null) {
-                  const val = parseInt(m[1], 10);
-                  const unit = m[2].toLowerCase();
-                  if (Number.isNaN(val)) continue;
-                  const H = 3600;
-                  const D = 8 * H;
-                  const W = 5 * D;
-                  const MO = 4 * W;
-                  if (unit === 'mo') seconds += val * MO;
-                  else if (unit === 'w') seconds += val * W;
-                  else if (unit === 'd') seconds += val * D;
-                  else if (unit === 'h') seconds += val * H;
-                  else if (unit === 'm') seconds += val * 60;
-                  else if (unit === 's') seconds += val;
-                }
+            //     while ((m = unitRe.exec(parseSource)) !== null) {
+            //       const val = parseInt(m[1], 10);
+            //       const unit = m[2].toLowerCase();
+            //       if (Number.isNaN(val)) continue;
+            //       const H = 3600;
+            //       const D = 8 * H;
+            //       const W = 5 * D;
+            //       const MO = 4 * W;
+            //       if (unit === 'mo') seconds += val * MO;
+            //       else if (unit === 'w') seconds += val * W;
+            //       else if (unit === 'd') seconds += val * D;
+            //       else if (unit === 'h') seconds += val * H;
+            //       else if (unit === 'm') seconds += val * 60;
+            //       else if (unit === 's') seconds += val;
+            //     }
+                seconds = parseDurationString(parseSource);
                 if (seconds === 0) continue;
                 const uid = note.author.id;
                 const isAssignee = recipients.some(p => p && p.id === uid);
@@ -1772,23 +1778,24 @@ function master1() {
 
                   if (!isInRange(fromDateKey)) continue;
                   let seconds = 0;
-                  const unitRe2 = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
-                  let m;
-                  const H = 3600;
-                  const D = 8 * H;
-                  const W = 5 * D;
-                  const MO = 4 * W;
-                  while ((m = unitRe2.exec(duration)) !== null) {
-                    const val = parseInt(m[1], 10);
-                    const unit = m[2].toLowerCase();
-                    if (Number.isNaN(val)) continue;
-                    if (unit === 'mo') seconds += val * MO;
-                    else if (unit === 'w') seconds += val * W;
-                    else if (unit === 'd') seconds += val * D;
-                    else if (unit === 'h') seconds += val * H;
-                    else if (unit === 'm') seconds += val * 60;
-                    else if (unit === 's') seconds += val;
-                  }
+                  // const unitRe2 = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                  // let m;
+                  // const H = 3600;
+                  // const D = 8 * H;
+                  // const W = 5 * D;
+                  // const MO = 4 * W;
+                  // while ((m = unitRe2.exec(duration)) !== null) {
+                  //   const val = parseInt(m[1], 10);
+                  //   const unit = m[2].toLowerCase();
+                  //   if (Number.isNaN(val)) continue;
+                  //   if (unit === 'mo') seconds += val * MO;
+                  //   else if (unit === 'w') seconds += val * W;
+                  //   else if (unit === 'd') seconds += val * D;
+                  //   else if (unit === 'h') seconds += val * H;
+                  //   else if (unit === 'm') seconds += val * 60;
+                  //   else if (unit === 's') seconds += val;
+                  // }
+                  seconds = parseDurationString(duration);
                   seconds = Math.abs(seconds);
                   if (seconds === 0) continue;
 
@@ -1888,26 +1895,27 @@ function master1() {
                 const isSub = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && (body.includes('time spent') || body.includes('spent time'));
                 if (!isAdd && !isSub) continue;
                 let seconds = 0;
-                const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
-                let mm;
-                const H = 3600;
-                const D = 8 * H;
-                const W = 5 * D;
-                const MO = 4 * W;
+            //     const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
+            //     let mm;
+            //     const H = 3600;
+            //     const D = 8 * H;
+            //     const W = 5 * D;
+            //     const MO = 4 * W;
                 // تلاش برای استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
                 const addSubMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
                 const parseSource = addSubMatch ? addSubMatch[1] : body;
-                while ((mm = unitRe.exec(parseSource)) !== null) {
-                  const val = parseInt(mm[1], 10);
-                  const unit = mm[2].toLowerCase();
-                  if (Number.isNaN(val)) continue;
-                  if (unit === 'mo') seconds += val * MO;
-                  else if (unit === 'w') seconds += val * W;
-                  else if (unit === 'd') seconds += val * D;
-                  else if (unit === 'h') seconds += val * H;
-                  else if (unit === 'm') seconds += val * 60;
-                  else if (unit === 's') seconds += val;
-                }
+            //     while ((mm = unitRe.exec(parseSource)) !== null) {
+            //       const val = parseInt(mm[1], 10);
+            //       const unit = mm[2].toLowerCase();
+            //       if (Number.isNaN(val)) continue;
+            //       if (unit === 'mo') seconds += val * MO;
+            //       else if (unit === 'w') seconds += val * W;
+            //       else if (unit === 'd') seconds += val * D;
+            //       else if (unit === 'h') seconds += val * H;
+            //       else if (unit === 'm') seconds += val * 60;
+            //       else if (unit === 's') seconds += val;
+            //     }
+                seconds = parseDurationString(parseSource);
                 seconds = Math.abs(seconds);
                 if (seconds === 0) continue;
 
@@ -2091,11 +2099,11 @@ function master1() {
                     }
                   } else {
                     // add/sub/changed estimate
-                    const H = 3600,
-                      D = 8 * H,
-                      W = 5 * D,
-                      MO = 4 * W;
-                    const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
+                  //   const H = 3600,
+                  //     D = 8 * H,
+                  //     W = 5 * D,
+                  //     MO = 4 * W;
+                  //   const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
                     const added = body.includes('added') && body.includes('time estimate');
                     const removed = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && body.includes('time estimate');
                     const changedMatch = body.match(/changed\s+time\s+estimate\s+to\s+(.+?)(?:\.|$)/i);
@@ -2105,42 +2113,44 @@ function master1() {
                       let desiredDelta = 0;
                       if (changedMatch) {
                         let seconds = 0;
-                        let m;
+                        // let m;
                         const src = changedMatch[1];
-                        while ((m = unitRe.exec(src)) !== null) {
-                          const val = parseInt(m[1], 10);
-                          const unit = m[2].toLowerCase();
-                          if (Number.isNaN(val)) continue;
-                          if (unit === 'mo') seconds += val * MO;
-                          else if (unit === 'w') seconds += val * W;
-                          else if (unit === 'd') seconds += val * D;
-                          else if (unit === 'h') seconds += val * H;
-                          else if (unit === 'm') seconds += val * 60;
-                          else if (unit === 's') seconds += val;
-                        }
+                        // while ((m = unitRe.exec(src)) !== null) {
+                        //   const val = parseInt(m[1], 10);
+                        //   const unit = m[2].toLowerCase();
+                        //   if (Number.isNaN(val)) continue;
+                        //   if (unit === 'mo') seconds += val * MO;
+                        //   else if (unit === 'w') seconds += val * W;
+                        //   else if (unit === 'd') seconds += val * D;
+                        //   else if (unit === 'h') seconds += val * H;
+                        //   else if (unit === 'm') seconds += val * 60;
+                        //   else if (unit === 's') seconds += val;
+                        // }
+                        seconds = parseDurationString(src);
                         // desiredDelta = toValue - current
                         const curr = Number((usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id] && usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id].issues[issue.iid]?.estimateCurrent) || 0);
                         desiredDelta = seconds - curr;
                       } else {
                         let seconds = 0;
-                        let m;
+                        // let m;
                         // Support both orders:
                         // 1) "added 1w of time estimate"
                         // 2) "added time estimate of 1w"
                         const srcMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
                         const srcMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+estimate|estimate\s+time)\s+of\s+(.+?)(?:\.|$)/i);
                         const src = srcMatchA ? srcMatchA[1] : srcMatchB ? srcMatchB[1] : body;
-                        while ((m = unitRe.exec(src)) !== null) {
-                          const val = parseInt(m[1], 10);
-                          const unit = m[2].toLowerCase();
-                          if (Number.isNaN(val)) continue;
-                          if (unit === 'mo') seconds += val * MO;
-                          else if (unit === 'w') seconds += val * W;
-                          else if (unit === 'd') seconds += val * D;
-                          else if (unit === 'h') seconds += val * H;
-                          else if (unit === 'm') seconds += val * 60;
-                          else if (unit === 's') seconds += val;
-                        }
+                        // while ((m = unitRe.exec(src)) !== null) {
+                        //   const val = parseInt(m[1], 10);
+                        //   const unit = m[2].toLowerCase();
+                        //   if (Number.isNaN(val)) continue;
+                        //   if (unit === 'mo') seconds += val * MO;
+                        //   else if (unit === 'w') seconds += val * W;
+                        //   else if (unit === 'd') seconds += val * D;
+                        //   else if (unit === 'h') seconds += val * H;
+                        //   else if (unit === 'm') seconds += val * 60;
+                        //   else if (unit === 's') seconds += val;
+                        // }
+                        seconds = parseDurationString(src);
                         seconds = Math.abs(seconds);
                         desiredDelta = added ? seconds : -seconds;
                       }
@@ -3354,6 +3364,7 @@ function master1() {
 
       res.json(results);
     } catch (error) {
+      console.error(error);
       res.status(500).json({
         message: 'خطا در تولید گزارش بازه‌ای فعالیت کاربران',
         error: error?.message || String(error),
@@ -3510,24 +3521,24 @@ async function fetchGitlabUsers() {
 
 // --- Universal duration parser (e.g., '3d 4h 46m' to total seconds) ---
 function parseDurationString(str) {
-  if (typeof str !== 'string') return 0;
-  let seconds = 0;
-  const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
-  let m;
-  const H = 3600;
-  const D = 8 * H;
-  const W = 5 * D;
-  const MO = 4 * W;
-  while ((m = unitRe.exec(str)) !== null) {
-    const val = parseInt(m[1], 10);
-    const unit = m[2].toLowerCase();
-    if (Number.isNaN(val)) continue;
-    if (unit === 'mo') seconds += val * MO;
-    else if (unit === 'w') seconds += val * W;
-    else if (unit === 'd') seconds += val * D;
-    else if (unit === 'h') seconds += val * H;
-    else if (unit === 'm') seconds += val * 60;
-    else if (unit === 's') seconds += val;
+      if (typeof str !== 'string') return 0;
+      let seconds = 0;
+      const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
+      let m;
+      const H = 3600;
+      const D = 8 * H;
+      const W = 5 * D;
+      const MO = 4 * W;
+      while ((m = unitRe.exec(str)) !== null) {
+          const val = parseInt(m[1], 10);
+          const unit = m[2].toLowerCase();
+          if (Number.isNaN(val)) continue;
+          if (unit === 'mo') seconds += val * MO;
+          else if (unit === 'w') seconds += val * W;
+          else if (unit === 'd') seconds += val * D;
+          else if (unit === 'h') seconds += val * H;
+          else if (unit === 'm') seconds += val * 60;
+          else if (unit === 's') seconds += val;
+      }
+      return seconds;
   }
-  return seconds;
-}
