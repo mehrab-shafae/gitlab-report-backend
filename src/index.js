@@ -1525,8 +1525,37 @@ function master1() {
                         return res.status(400).json({ message: 'فرمت تاریخ از/تا نامعتبر است' });
                   }
                   const pad2 = n => String(n).padStart(2, '0');
-                  // timezone offset in minutes; positive => add minutes to UTC
-                  const tzOffsetMinutes = Number(req.query.tz_offset_minutes ?? process.env.TZ_OFFSET_MINUTES ?? 0);
+                  // timezone handling: prefer explicit minutes, then headers, then derive from IANA timezone, fallback 0
+                  const reqTzOffsetRaw = req.query.tz_offset_minutes ?? req.headers['x-tz-offset-minutes'] ?? process.env.TZ_OFFSET_MINUTES;
+                  const reqTimeZone = req.query.timezone || req.headers['x-timezone'] || process.env.TIMEZONE;
+                  const parseGmtOffset = val => {
+                        if (!val || typeof val !== 'string') return undefined;
+                        // Examples: "GMT+3", "GMT+03:30", "UTC-04:00"
+                        const m = val.match(/([+-])(\d{1,2})(?::?(\d{2}))?$/);
+                        if (!m) return undefined;
+                        const sign = m[1] === '-' ? -1 : 1;
+                        const hours = Number(m[2] || '0');
+                        const mins = Number(m[3] || '0');
+                        return sign * (hours * 60 + mins);
+                  };
+                  const deriveOffsetFromTimeZone = (date, tz) => {
+                        try {
+                              if (!tz) return undefined;
+                              const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' });
+                              const parts = fmt.formatToParts(date);
+                              const tzPart = parts.find(p => p.type === 'timeZoneName');
+                              const parsed = parseGmtOffset(tzPart && tzPart.value);
+                              return Number.isFinite(parsed) ? parsed : undefined;
+                        } catch (_) {
+                              return undefined;
+                        }
+                  };
+                  let tzOffsetMinutes = Number(reqTzOffsetRaw);
+                  if (!Number.isFinite(tzOffsetMinutes)) {
+                        const derived = deriveOffsetFromTimeZone(fromDate, reqTimeZone);
+                        // Default to GMT+3:30 (Tehran standard) when not provided/derivable
+                        tzOffsetMinutes = Number.isFinite(derived) ? derived : 210;
+                  }
                   const toKey = d => {
                         const base = d instanceof Date ? d : new Date(d);
                         const adjMs = base.getTime() + (Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0) * 60000;
@@ -1558,7 +1587,8 @@ function master1() {
                   };
                   // Only from env; default to Sunday-Thursday (0..4)
                   const workdaysParam = process.env.WORKDAYS; // e.g., "sun,mon,tue,wed,thu" or "0,1,2,3,4"
-                  const workdaysSet = parseWorkdays(workdaysParam || 'sun,mon,tue,wed,thu');
+                  // Default for Iran: all days except Saturday (i.e. sun,mon,tue,wed,thu,fri; skip sat)
+                  const workdaysSet = parseWorkdays(workdaysParam || 'sun,mon,tue,wed,thu,fri');
                   // Build working-day calendar (Saturday to Thursday), respecting tz_offset
                   const enumerateWorkingDates = () => {
                         const out = [];
@@ -1893,7 +1923,7 @@ function master1() {
                                                       continue;
                                                 }
 
-                                                if (!isInRange(noteKey)) continue;
+                                                // در تغییرات add/sub، اگر تاریخ مشخصی در متن آمده باشد، همان تاریخ ملاک است؛ وگرنه تاریخ ایجاد نوت
                                                 const isAdd = body.includes('added') && (body.includes('time spent') || body.includes('spent time'));
                                                 const isSub = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && (body.includes('time spent') || body.includes('spent time'));
                                                 if (!isAdd && !isSub) continue;
@@ -1922,6 +1952,35 @@ function master1() {
                                                 seconds = parseDurationString(parseSource);
                                                 seconds = Math.abs(seconds);
                                                 if (seconds === 0) continue;
+                                                // استخراج تاریخ صریح از متن در صورت وجود (from/on/at YYYY-MM-DD)
+                                                // تلاش برای استخراج تاریخ صریح با چند فرمت رایج
+                                                let targetKey = noteKey;
+                                                {
+                                                      // 1) ISO 8601: YYYY-MM-DD (با یا بدون from/on/at)
+                                                      const mIso = body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}-\d{2}-\d{2})\b/);
+                                                      // 2) Slash: YYYY/MM/DD
+                                                      const mSlash = !mIso && body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}\/\d{2}\/\d{2})\b/);
+                                                      // 3) Month name: Oct 6, 2025
+                                                      const mMon = !mIso && !mSlash && body.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),\s*(\d{4})\b/i);
+                                                      let normalized = null;
+                                                      if (mIso) {
+                                                            normalized = mIso[1];
+                                                      } else if (mSlash) {
+                                                            // normalize to YYYY-MM-DD
+                                                            normalized = mSlash[1].replace(/\//g, '-');
+                                                      } else if (mMon) {
+                                                            const mon = mMon[1].toLowerCase();
+                                                            const day = String(mMon[2]).padStart(2, '0');
+                                                            const year = mMon[3];
+                                                            const monMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', sept: '09', oct: '10', nov: '11', dec: '12' };
+                                                            const mm = monMap[mon];
+                                                            if (mm) normalized = `${year}-${mm}-${day}`;
+                                                      }
+                                                      if (normalized) {
+                                                            targetKey = normalized;
+                                                      }
+                                                }
+                                                if (!isInRange(targetKey)) continue;
 
                                                 // Attribution strategy: author-first vs shared
                                                 // Determine attribution targets and share by total assignees count to avoid inflating shares
@@ -1945,7 +2004,7 @@ function master1() {
                                                             delta,
                                                             shareCount,
                                                             shareSeconds,
-                                                            dateKey: noteKey,
+                                                            dateKey: targetKey,
                                                       });
                                                 } catch (e) {}
                                                 for (const person of assigneesForShare) {
@@ -1996,27 +2055,27 @@ function master1() {
                                                       }
                                                       let appliedDelta = shareSeconds;
                                                       if (isSub) {
-                                                            const currentIssueDay = Number(usersMap[uidShare].issues[issue.iid].byDate[noteKey] || 0);
+                                                            const currentIssueDay = Number(usersMap[uidShare].issues[issue.iid].byDate[targetKey] || 0);
                                                             const appliedAbs = Math.min(currentIssueDay, Math.abs(shareSeconds));
                                                             if (appliedAbs <= 0) continue;
                                                             appliedDelta = -appliedAbs;
                                                       }
                                                       usersMap[uidShare].totalSpent += appliedDelta;
                                                       usersMap[uidShare].issues[issue.iid].spentInRange = Math.max(0, (usersMap[uidShare].issues[issue.iid].spentInRange || 0) + appliedDelta);
-                                                      usersMap[uidShare].byDate[noteKey] = Math.max(0, (usersMap[uidShare].byDate[noteKey] || 0) + appliedDelta);
-                                                      usersMap[uidShare].issues[issue.iid].byDate[noteKey] = Math.max(0, (usersMap[uidShare].issues[issue.iid].byDate[noteKey] || 0) + appliedDelta);
+                                                      usersMap[uidShare].byDate[targetKey] = Math.max(0, (usersMap[uidShare].byDate[targetKey] || 0) + appliedDelta);
+                                                      usersMap[uidShare].issues[issue.iid].byDate[targetKey] = Math.max(0, (usersMap[uidShare].issues[issue.iid].byDate[targetKey] || 0) + appliedDelta);
                                                       if (isAdd && Math.abs(appliedDelta) >= 8 * 3600) {
                                                             usersMap[uidShare].issues[issue.iid].quality.largeOneOffSpends.push({
                                                                   at: note.created_at,
                                                                   seconds: appliedDelta,
-                                                                  dateKey: noteKey,
+                                                                  dateKey: targetKey,
                                                             });
                                                       }
                                                       try {
                                                             console.log('[activity-range][apply][change]', {
                                                                   userId: uidShare,
                                                                   iid: issue.iid,
-                                                                  dateKey: noteKey,
+                                                                  dateKey: targetKey,
                                                                   delta: appliedDelta,
                                                                   totalSpent: usersMap[uidShare].totalSpent,
                                                             });
@@ -2172,7 +2231,33 @@ function master1() {
                                                                   issue.__estimateCurrentTmp = currShared + clampedDelta;
                                                                   const baseCount = attribution === 'author' ? 1 : recipients.length || 1;
                                                                   const share = baseCount > 0 ? clampedDelta / baseCount : clampedDelta;
-                                                                  if (isInRange(noteKey)) {
+                                                                  // تاریخ هدف: اگر تاریخ صریح در متن بود همان، وگرنه تاریخ نوت
+                                                                  let targetKeyEst = noteKey;
+                                                                  {
+                                                                        // 1) ISO 8601: YYYY-MM-DD
+                                                                        const mIso = body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}-\d{2}-\d{2})\b/);
+                                                                        // 2) Slash: YYYY/MM/DD
+                                                                        const mSlash = !mIso && body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}\/\d{2}\/\d{2})\b/);
+                                                                        // 3) Month name: Oct 6, 2025
+                                                                        const mMon = !mIso && !mSlash && body.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),\s*(\d{4})\b/i);
+                                                                        let normalized = null;
+                                                                        if (mIso) {
+                                                                              normalized = mIso[1];
+                                                                        } else if (mSlash) {
+                                                                              normalized = mSlash[1].replace(/\//g, '-');
+                                                                        } else if (mMon) {
+                                                                              const mon = mMon[1].toLowerCase();
+                                                                              const day = String(mMon[2]).padStart(2, '0');
+                                                                              const year = mMon[3];
+                                                                              const monMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', sept: '09', oct: '10', nov: '11', dec: '12' };
+                                                                              const mm = monMap[mon];
+                                                                              if (mm) normalized = `${year}-${mm}-${day}`;
+                                                                        }
+                                                                        if (normalized) {
+                                                                              targetKeyEst = normalized;
+                                                                        }
+                                                                  }
+                                                                  if (isInRange(targetKeyEst)) {
                                                                         for (const person of assigneesForShare) {
                                                                               const uid = Number(person.id);
                                                                               if (!userIdsSet.has(uid)) continue;
@@ -2221,7 +2306,7 @@ function master1() {
                                                                               }
                                                                               usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
                                                                               usersMap[uid].issues[issue.iid].estimateInRange = (usersMap[uid].issues[issue.iid].estimateInRange || 0) + share;
-                                                                              usersMap[uid].issues[issue.iid].estimateByDate[noteKey] = (usersMap[uid].issues[issue.iid].estimateByDate[noteKey] || 0) + share;
+                                                                              usersMap[uid].issues[issue.iid].estimateByDate[targetKeyEst] = (usersMap[uid].issues[issue.iid].estimateByDate[targetKeyEst] || 0) + share;
                                                                         }
                                                                   }
                                                             }
