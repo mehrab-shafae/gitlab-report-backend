@@ -606,8 +606,9 @@ function master1() {
                         let seconds = 0;
                         //   let mm;
                         // استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
-                        const addSubMatch = lowered.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
-                        const parseSource = addSubMatch ? addSubMatch[1] : lowered;
+                        const addSubMatchA = lowered.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
+                        const addSubMatchB = lowered.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+spent|spent\s+time)\s+of\s+(.+?)(?:\.|$)/i);
+                        const parseSource = addSubMatchA ? addSubMatchA[1] : addSubMatchB ? addSubMatchB[1] : lowered;
                         //   while ((mm = unitRe.exec(parseSource)) !== null) {
                         //     const val = parseInt(mm[1], 10);
                         //     const unit = mm[2].toLowerCase();
@@ -1275,8 +1276,9 @@ function master1() {
                                                 //     const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
                                                 //     let m;
                                                 // تلاش برای استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
-                                                const addSubMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
-                                                const parseSource = addSubMatch ? addSubMatch[1] : body;
+                                                const addSubMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
+                                                const addSubMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+spent|spent\s+time)\s+of\s+(.+?)(?:\.|$)/i);
+                                                const parseSource = addSubMatchA ? addSubMatchA[1] : addSubMatchB ? addSubMatchB[1] : body;
                                                 //     while ((m = unitRe.exec(parseSource)) !== null) {
                                                 //       const val = parseInt(m[1], 10);
                                                 //       const unit = m[2].toLowerCase();
@@ -1899,8 +1901,9 @@ function master1() {
                                                 //     const W = 5 * D;
                                                 //     const MO = 4 * W;
                                                 // تلاش برای استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
-                                                const addSubMatch = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
-                                                const parseSource = addSubMatch ? addSubMatch[1] : body;
+                                                const addSubMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
+                                                const addSubMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+spent|spent\s+time)\s+of\s+(.+?)(?:\.|$)/i);
+                                                const parseSource = addSubMatchA ? addSubMatchA[1] : addSubMatchB ? addSubMatchB[1] : body;
                                                 //     while ((mm = unitRe.exec(parseSource)) !== null) {
                                                 //       const val = parseInt(mm[1], 10);
                                                 //       const unit = mm[2].toLowerCase();
@@ -3523,7 +3526,7 @@ async function fetchGitlabUsers() {
 function parseDurationString(str) {
       if (typeof str !== 'string') return 0;
       let seconds = 0;
-      const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
+      const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)(?=\D|$)/gi;
       let m;
       const H = 3600;
       const D = 8 * H;
