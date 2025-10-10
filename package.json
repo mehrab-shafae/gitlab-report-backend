@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "type": "module",
   "author": "MRB & Abolfzl && Ali Mahmoudi",
+  "license":"UNLICENSED",
   "scripts": {
     "start": "node .",
     "pretty": "prettier --write \"**/*.{js,json,html,ts}\""
