@@ -10,7 +10,7 @@ import util from 'node:util';
       let name = null;
       let packageJsonPath = null;
 
-      console.log('[log] init app...');
+      console.log('[log] Initializing app...');
 
       const searchPaths = [path.join(process.cwd(), 'package.json'), path.join(process.cwd(), '..', 'package.json'), path.join(process.cwd(), '..', '..', 'package.json')];
 
@@ -189,7 +189,7 @@ import util from 'node:util';
             }
       };
 
-      console.log('[log] app init complete.');
+      console.log('[info] App initialization complete.');
 
       // --- process-wide handlers
       process.on('uncaughtException', err => {
@@ -197,7 +197,7 @@ import util from 'node:util';
             logger.fatal({ err }, 'Uncaught exception');
             // give pino a short moment to flush (pino transport handles buffering)
             // but do not block indefinitely
-            setTimeout(() => process.exit(1), 200);
+            // setTimeout(() => process.exit(1), 200);
       });
 
       process.on('unhandledRejection', reason => {

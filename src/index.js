@@ -1,3 +1,5 @@
+'use strict';
+
 import 'dotenv/config';
 import './log.js';
 
