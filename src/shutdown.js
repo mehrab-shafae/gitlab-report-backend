@@ -27,7 +27,7 @@ process.on('SIGINT', () => runShutdown('SIGINT'));
 process.on('SIGTERM', () => runShutdown('SIGTERM'));
 process.on('SIGHUP', () => runShutdown('SIGHUP'));
 
-process.on('uncaughtException', e => runShutdown('uncaughtException'));
-process.on('unhandledRejection', e => runShutdown('unhandledRejection'));
+process.on('uncaughtException', _e => runShutdown('uncaughtException'));
+process.on('unhandledRejection', _e => runShutdown('unhandledRejection'));
 
 // process.on('exit', () => runShutdown('exit'));

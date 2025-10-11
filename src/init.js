@@ -1,3 +1,5 @@
+import './log.js';
+
 import mongoose from 'mongoose';
 import { onShutdown } from './shutdown.js';
 

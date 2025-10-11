@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
-import { userSchema } from './modelSchema.js';
-import { JWT_SECRET } from './config.js';
+import { userSchema } from '../modelSchema.js';
+import { JWT_SECRET } from '../config.js';
 import jwt from 'jsonwebtoken';
 
 const User = mongoose.models.User || mongoose.model('User', userSchema);

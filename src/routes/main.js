@@ -1,4 +1,4 @@
-import { baseUUrl, token, DEV_MODE, JWT_SECRET, adminUser, perPage, projectId } from './config.js';
+import { baseUUrl, token, DEV_MODE, JWT_SECRET, adminUser, perPage, projectId } from '../config.js';
 import ExcelJS from 'exceljs';
 import jwt from 'jsonwebtoken';
 
