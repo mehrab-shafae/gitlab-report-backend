@@ -1,3 +1,5 @@
+'use strict';
+
 import { baseUUrl, token, perPage, projectId } from '../../config.js';
 import ExcelJS from 'exceljs';
 import { parseDurationString } from '../../utils.js';
