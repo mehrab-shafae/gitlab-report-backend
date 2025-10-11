@@ -793,56 +793,56 @@ export default async (req, res) => {
                                                             //       }
                                                             // }
                                                             // if (isInRange(targetKeyEst)) {
-                                                                  for (const person of assigneesForShare) {
-                                                                        const uid = Number(person.id);
-                                                                        if (!userIdsSet.has(uid)) continue;
-                                                                        if (!usersMap[uid]) {
-                                                                              usersMap[uid] = {
-                                                                                    userId: uid,
-                                                                                    username: person.username || note.author.username || '',
-                                                                                    name: person.name || note.author.name || '',
-                                                                                    avatar_url: person.avatar_url || note.author.avatar_url || '',
-                                                                                    totalSpent: 0,
-                                                                                    totalEstimate: 0,
-                                                                                    issues: {},
-                                                                                    labels: new Set(),
-                                                                                    byDate: {},
-                                                                              };
-                                                                        }
-                                                                        if (!usersMap[uid].issues[issue.iid]) {
-                                                                              usersMap[uid].issues[issue.iid] = {
-                                                                                    iid: issue.iid,
-                                                                                    title: issue.title,
-                                                                                    state: issue.state,
-                                                                                    labels: issue.labels,
-                                                                                    time_stats: issue.time_stats,
-                                                                                    milestone: issue.milestone,
-                                                                                    created_at: issue.created_at,
-                                                                                    updated_at: issue.updated_at,
-                                                                                    assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
-                                                                                    spentInRange: 0,
-                                                                                    estimateInRange: 0,
-                                                                                    commentsInRange: 0,
-                                                                                    byDate: {},
-                                                                                    estimateByDate: {},
-                                                                                    quality: {
-                                                                                          hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
-                                                                                          hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
-                                                                                          labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
-                                                                                          hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
-                                                                                          estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
-                                                                                          spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
-                                                                                          spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
-                                                                                          descriptionEditsInRange: 0,
-                                                                                          largeOneOffSpends: [],
-                                                                                    },
-                                                                                    estimateCurrent: 0,
-                                                                              };
-                                                                        }
-                                                                        usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
-                                                                        usersMap[uid].issues[issue.iid].estimateInRange = (usersMap[uid].issues[issue.iid].estimateInRange || 0) + share;
-                                                                        usersMap[uid].issues[issue.iid].estimateByDate[noteKey] = (usersMap[uid].issues[issue.iid].estimateByDate[noteKey] || 0) + share;
+                                                            for (const person of assigneesForShare) {
+                                                                  const uid = Number(person.id);
+                                                                  if (!userIdsSet.has(uid)) continue;
+                                                                  if (!usersMap[uid]) {
+                                                                        usersMap[uid] = {
+                                                                              userId: uid,
+                                                                              username: person.username || note.author.username || '',
+                                                                              name: person.name || note.author.name || '',
+                                                                              avatar_url: person.avatar_url || note.author.avatar_url || '',
+                                                                              totalSpent: 0,
+                                                                              totalEstimate: 0,
+                                                                              issues: {},
+                                                                              labels: new Set(),
+                                                                              byDate: {},
+                                                                        };
                                                                   }
+                                                                  if (!usersMap[uid].issues[issue.iid]) {
+                                                                        usersMap[uid].issues[issue.iid] = {
+                                                                              iid: issue.iid,
+                                                                              title: issue.title,
+                                                                              state: issue.state,
+                                                                              labels: issue.labels,
+                                                                              time_stats: issue.time_stats,
+                                                                              milestone: issue.milestone,
+                                                                              created_at: issue.created_at,
+                                                                              updated_at: issue.updated_at,
+                                                                              assignedIds: Array.isArray(recipients) ? recipients.filter(p => p && p.id).map(p => Number(p.id)) : [],
+                                                                              spentInRange: 0,
+                                                                              estimateInRange: 0,
+                                                                              commentsInRange: 0,
+                                                                              byDate: {},
+                                                                              estimateByDate: {},
+                                                                              quality: {
+                                                                                    hasTitle: Boolean(issue.title && String(issue.title).trim().length > 0),
+                                                                                    hasDescription: Boolean(issue.description && String(issue.description).trim().length > 0),
+                                                                                    labelsCount: Array.isArray(issue.labels) ? issue.labels.length : 0,
+                                                                                    hasStatusLabel: Array.isArray(issue.labels) ? issue.labels.some(l => /status/i.test(String(l))) : false,
+                                                                                    estimateIsZero: !(issue.time_stats && Number(issue.time_stats.time_estimate) > 0),
+                                                                                    spentIsZero: !(issue.time_stats && Number(issue.time_stats.total_time_spent) > 0),
+                                                                                    spentEqualsEstimate: Boolean(issue.time_stats && Number(issue.time_stats.time_estimate) > 0 && Number(issue.time_stats.total_time_spent) === Number(issue.time_stats.time_estimate)),
+                                                                                    descriptionEditsInRange: 0,
+                                                                                    largeOneOffSpends: [],
+                                                                              },
+                                                                              estimateCurrent: 0,
+                                                                        };
+                                                                  }
+                                                                  usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
+                                                                  usersMap[uid].issues[issue.iid].estimateInRange = (usersMap[uid].issues[issue.iid].estimateInRange || 0) + share;
+                                                                  usersMap[uid].issues[issue.iid].estimateByDate[noteKey] = (usersMap[uid].issues[issue.iid].estimateByDate[noteKey] || 0) + share;
+                                                            }
                                                             // }
                                                       }
                                                 }
@@ -1079,17 +1079,27 @@ export default async (req, res) => {
                   let realnessSum = 0;
                   let suspiciousIssueCount = 0;
 
+                  for (const u of Object.values(usersMap)) {
+                        if (!u.byDate) u.byDate = {};
+                        if (!u.issues) u.issues = {};
+                  }
+
                   const daily = workingDateKeys.map(k => {
-                        const issuesArr = Object.values(u.issues || {})
-                              .map(iss => ({ iid: iss.iid, spent: (iss.byDate && iss.byDate[k]) || 0 }))
-                              .filter(x => x.spent !== 0);
+                        const issueList = Object.values(u.issues || {});
+                        const issuesArr = issueList.map(iss => ({ iid: iss.iid, spent: (iss.byDate && iss.byDate[k]) || 0 })).filter(x => x.spent !== 0);
+
+                        const totalForDay = issueList.reduce((sum, iss) => {
+                              return sum + (iss.byDate && iss.byDate[k] ? Number(iss.byDate[k]) : 0);
+                        }, 0);
+
                         return {
                               date: k,
-                              spent: u.byDate[k] || 0,
+                              spent: totalForDay,
                               issues: issuesArr,
                               issueIids: issuesArr.map(it => it.iid),
                         };
                   });
+
                   const H = 3600;
                   // --- New percent-based thresholds (base day = 8h20m = 30000s by default) ---
                   const qBaseSec = Number(req.query.base_seconds ?? process.env.BASE_DAY_SECONDS ?? 30000);
