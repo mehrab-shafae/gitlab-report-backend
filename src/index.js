@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import './init.js';
+
 import ExcelJS from 'exceljs';
 import express from 'express';
 import jwt from 'jsonwebtoken';
@@ -6,19 +8,6 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 
 const app = express();
-
-const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
-mongoose
-      .connect(mongoUri, {
-            dbName: process.env.MONGODB_DB || 'forvest_git',
-            authSource: 'admin',
-            socketTimeoutMS: 60000,
-            serverSelectionTimeoutMS: 60000,
-            minPoolSize: 5,
-            maxPoolSize: 20,
-      })
-      .then(() => console.log('* MongoDB connected'))
-      .catch(err => console.error('MongoDB connection error:', err.message));
 
 const userSchema = new mongoose.Schema(
       {
