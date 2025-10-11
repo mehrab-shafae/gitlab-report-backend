@@ -2,7 +2,7 @@ import { baseUUrl, token, perPage, projectId } from '../config.js';
 import ExcelJS from 'exceljs';
 import auth from '../middleware/auth.js';
 
-export function master1(app) {
+export default function (app) {
       app.use(asyncHandler(auth));
 
       app.get('/milestones', async (req, res) => {
