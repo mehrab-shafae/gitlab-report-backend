@@ -1,6 +1,6 @@
 import { baseUUrl, token, perPage, projectId } from '../../config.js';
 import ExcelJS from 'exceljs';
-import {parseDurationString} from '../../utils.js';
+import { parseDurationString } from '../../utils.js';
 
 export default async (req, res) => {
       // --- تعریف وزن‌های امتیازدهی (قابل پیکربندی از query/env) ---

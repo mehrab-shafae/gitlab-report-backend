@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { DEV_MODE, JWT_SECRET, adminUser } from '../config.js';
+import { fetchGitlabUsers } from '../utils.js';
 
 export default async (req, res, next) => {
       try {
