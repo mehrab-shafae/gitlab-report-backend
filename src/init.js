@@ -1,5 +1,8 @@
 import './log.js';
 
+import './cwd.js';
+import './asyncHandler.js';
+
 import mongoose from 'mongoose';
 import { onShutdown } from './shutdown.js';
 
