@@ -12,14 +12,14 @@ export const JWT_SECRET = process.env.JWT_SECRET || 'fdffdsasd4343';
 export const DEV_MODE = process.env.DEV_MODE === 'true';
 
 if (DEV_MODE) {
-      console.log('🔧 Development mode is ENABLED - Token validation bypassed');
+	console.log('🔧 Development mode is ENABLED - Token validation bypassed');
 }
 
 export const originsC = [`http://localhost:${port}`, process.env.originsCors];
 
 if (!baseUUrl || !token) {
-      throw new Error('GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است');
+	throw new Error('GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است');
 }
 if (!projectId) {
-      throw new Error('projectId مشخص نیست (query یا .env)');
+	throw new Error('projectId مشخص نیست (query یا .env)');
 }
