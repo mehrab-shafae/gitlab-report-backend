@@ -3,20 +3,11 @@
 import { baseUUrl, token, perPage, projectId } from '../../config.js';
 import ExcelJS from 'exceljs';
 import { parseDurationString } from '../../utils.js';
+import { weights, attribution, NOTES_CONCURRENCY } from './ActivityRange/config.js';
 
 export default async (req, res) => {
-	const wRealness = Number(req.query.w_realness ?? process.env.W_REALNESS ?? 0.5);
-	const wQuality = Number(req.query.w_quality ?? process.env.W_QUALITY ?? 0.3);
-	const wAbsence = Number(req.query.w_absence ?? process.env.W_ABSENCE ?? 0.2);
-	const weights = {
-		realness: Number.isFinite(wRealness) ? wRealness : 0.5,
-		quality: Number.isFinite(wQuality) ? wQuality : 0.3,
-		absence: Number.isFinite(wAbsence) ? wAbsence : 0.2,
-	};
 	try {
 		const { users, from, to } = req.query;
-		const attribution = (req.query.attribution || 'shared').toString().toLowerCase(); // 'author' | 'shared'
-		const NOTES_CONCURRENCY = Math.max(1, Number(process.env.ACTIVITY_NOTES_CONCURRENCY) || 10);
 
 		if (!users || !from || !to) {
 			return res.status(400).json({ message: 'پارامترهای users, from, to الزامی هستند' });
@@ -314,23 +305,6 @@ export default async (req, res) => {
 
 								if (!isInRange(fromDateKey)) continue;
 								let seconds = 0;
-								// const unitRe2 = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
-								// let m;
-								// const H = 3600;
-								// const D = 8 * H;
-								// const W = 5 * D;
-								// const MO = 4 * W;
-								// while ((m = unitRe2.exec(duration)) !== null) {
-								//   const val = parseInt(m[1], 10);
-								//   const unit = m[2].toLowerCase();
-								//   if (Number.isNaN(val)) continue;
-								//   if (unit === 'mo') seconds += val * MO;
-								//   else if (unit === 'w') seconds += val * W;
-								//   else if (unit === 'd') seconds += val * D;
-								//   else if (unit === 'h') seconds += val * H;
-								//   else if (unit === 'm') seconds += val * 60;
-								//   else if (unit === 's') seconds += val;
-								// }
 								seconds = parseDurationString(duration);
 								seconds = Math.abs(seconds);
 								if (seconds === 0) continue;
@@ -426,66 +400,20 @@ export default async (req, res) => {
 								continue;
 							}
 
-							// در تغییرات add/sub، اگر تاریخ مشخصی در متن آمده باشد، همان تاریخ ملاک است؛ وگرنه تاریخ ایجاد نوت
 							if (!isInRange(noteKey)) continue;
 
 							const isAdd = body.includes('added') && (body.includes('time spent') || body.includes('spent time'));
 							const isSub = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && (body.includes('time spent') || body.includes('spent time'));
 							if (!isAdd && !isSub) continue;
 							let seconds = 0;
-							//     const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
-							//     let mm;
-							//     const H = 3600;
-							//     const D = 8 * H;
-							//     const W = 5 * D;
-							//     const MO = 4 * W;
-							// تلاش برای استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
+
 							const addSubMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
 							const addSubMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+spent|spent\s+time)\s+of\s+(.+?)(?:\.|$)/i);
 							const parseSource = addSubMatchA ? addSubMatchA[1] : addSubMatchB ? addSubMatchB[1] : body;
-							//     while ((mm = unitRe.exec(parseSource)) !== null) {
-							//       const val = parseInt(mm[1], 10);
-							//       const unit = mm[2].toLowerCase();
-							//       if (Number.isNaN(val)) continue;
-							//       if (unit === 'mo') seconds += val * MO;
-							//       else if (unit === 'w') seconds += val * W;
-							//       else if (unit === 'd') seconds += val * D;
-							//       else if (unit === 'h') seconds += val * H;
-							//       else if (unit === 'm') seconds += val * 60;
-							//       else if (unit === 's') seconds += val;
-							//     }
+
 							seconds = parseDurationString(parseSource);
 							seconds = Math.abs(seconds);
 							if (seconds === 0) continue;
-							// استخراج تاریخ صریح از متن در صورت وجود (from/on/at YYYY-MM-DD)
-							// تلاش برای استخراج تاریخ صریح با چند فرمت رایج
-							// let targetKey = noteKey;
-							// {
-							//       // 1) ISO 8601: YYYY-MM-DD (با یا بدون from/on/at)
-							//       const mIso = body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}-\d{2}-\d{2})\b/);
-							//       // 2) Slash: YYYY/MM/DD
-							//       const mSlash = !mIso && body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}\/\d{2}\/\d{2})\b/);
-							//       // 3) Month name: Oct 6, 2025
-							//       const mMon = !mIso && !mSlash && body.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),\s*(\d{4})\b/i);
-							//       let normalized = null;
-							//       if (mIso) {
-							//             normalized = mIso[1];
-							//       } else if (mSlash) {
-							//             // normalize to YYYY-MM-DD
-							//             normalized = mSlash[1].replace(/\//g, '-');
-							//       } else if (mMon) {
-							//             const mon = mMon[1].toLowerCase();
-							//             const day = String(mMon[2]).padStart(2, '0');
-							//             const year = mMon[3];
-							//             const monMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', sept: '09', oct: '10', nov: '11', dec: '12' };
-							//             const mm = monMap[mon];
-							//             if (mm) normalized = `${year}-${mm}-${day}`;
-							//       }
-							//       if (normalized) {
-							//             targetKey = normalized;
-							//       }
-							// }
-							// if (!isInRange(targetKey)) continue;
 
 							// Attribution strategy: author-first vs shared
 							// Determine attribution targets and share by total assignees count to avoid inflating shares
@@ -595,7 +523,7 @@ export default async (req, res) => {
 									});
 								}
 							}
-							// --- time estimate changes ---
+
 							{
 								const noteKey = toKey(note.created_at);
 								const body = String(note.body).toLowerCase();
@@ -666,12 +594,6 @@ export default async (req, res) => {
 										issRec.estimateByDate[noteKey] = (issRec.estimateByDate[noteKey] || 0) + share;
 									}
 								} else {
-									// add/sub/changed estimate
-									//   const H = 3600,
-									//     D = 8 * H,
-									//     W = 5 * D,
-									//     MO = 4 * W;
-									//   const unitRe = /(-?\d+)\s*(mo|w|d|h|m|s)\b/gi;
 									const added = body.includes('added') && body.includes('time estimate');
 									const removed = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && body.includes('time estimate');
 									const changedMatch = body.match(/changed\s+time\s+estimate\s+to\s+(.+?)(?:\.|$)/i);
@@ -681,43 +603,17 @@ export default async (req, res) => {
 										let desiredDelta = 0;
 										if (changedMatch) {
 											let seconds = 0;
-											// let m;
 											const src = changedMatch[1];
-											// while ((m = unitRe.exec(src)) !== null) {
-											//   const val = parseInt(m[1], 10);
-											//   const unit = m[2].toLowerCase();
-											//   if (Number.isNaN(val)) continue;
-											//   if (unit === 'mo') seconds += val * MO;
-											//   else if (unit === 'w') seconds += val * W;
-											//   else if (unit === 'd') seconds += val * D;
-											//   else if (unit === 'h') seconds += val * H;
-											//   else if (unit === 'm') seconds += val * 60;
-											//   else if (unit === 's') seconds += val;
-											// }
 											seconds = parseDurationString(src);
 											// desiredDelta = toValue - current
 											const curr = Number((usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id] && usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id].issues[issue.iid]?.estimateCurrent) || 0);
 											desiredDelta = seconds - curr;
 										} else {
 											let seconds = 0;
-											// let m;
-											// Support both orders:
-											// 1) "added 1w of time estimate"
-											// 2) "added time estimate of 1w"
 											const srcMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+estimate|estimate\s+time)/i);
 											const srcMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+estimate|estimate\s+time)\s+of\s+(.+?)(?:\.|$)/i);
 											const src = srcMatchA ? srcMatchA[1] : srcMatchB ? srcMatchB[1] : body;
-											// while ((m = unitRe.exec(src)) !== null) {
-											//   const val = parseInt(m[1], 10);
-											//   const unit = m[2].toLowerCase();
-											//   if (Number.isNaN(val)) continue;
-											//   if (unit === 'mo') seconds += val * MO;
-											//   else if (unit === 'w') seconds += val * W;
-											//   else if (unit === 'd') seconds += val * D;
-											//   else if (unit === 'h') seconds += val * H;
-											//   else if (unit === 'm') seconds += val * 60;
-											//   else if (unit === 's') seconds += val;
-											// }
+
 											seconds = parseDurationString(src);
 											seconds = Math.abs(seconds);
 											desiredDelta = added ? seconds : -seconds;
@@ -736,33 +632,6 @@ export default async (req, res) => {
 										issue.__estimateCurrentTmp = currShared + clampedDelta;
 										const baseCount = attribution === 'author' ? 1 : recipients.length || 1;
 										const share = baseCount > 0 ? clampedDelta / baseCount : clampedDelta;
-										// تاریخ هدف: اگر تاریخ صریح در متن بود همان، وگرنه تاریخ نوت
-										// let targetKeyEst = noteKey;
-										// {
-										//       // 1) ISO 8601: YYYY-MM-DD
-										//       const mIso = body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}-\d{2}-\d{2})\b/);
-										//       // 2) Slash: YYYY/MM/DD
-										//       const mSlash = !mIso && body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}\/\d{2}\/\d{2})\b/);
-										//       // 3) Month name: Oct 6, 2025
-										//       const mMon = !mIso && !mSlash && body.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),\s*(\d{4})\b/i);
-										//       let normalized = null;
-										//       if (mIso) {
-										//             normalized = mIso[1];
-										//       } else if (mSlash) {
-										//             normalized = mSlash[1].replace(/\//g, '-');
-										//       } else if (mMon) {
-										//             const mon = mMon[1].toLowerCase();
-										//             const day = String(mMon[2]).padStart(2, '0');
-										//             const year = mMon[3];
-										//             const monMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', sept: '09', oct: '10', nov: '11', dec: '12' };
-										//             const mm = monMap[mon];
-										//             if (mm) normalized = `${year}-${mm}-${day}`;
-										//       }
-										//       if (normalized) {
-										//             targetKeyEst = normalized;
-										//       }
-										// }
-										// if (isInRange(targetKeyEst)) {
 										for (const person of assigneesForShare) {
 											const uid = Number(person.id);
 											if (!userIdsSet.has(uid)) continue;
@@ -813,7 +682,6 @@ export default async (req, res) => {
 											usersMap[uid].issues[issue.iid].estimateInRange = (usersMap[uid].issues[issue.iid].estimateInRange || 0) + share;
 											usersMap[uid].issues[issue.iid].estimateByDate[noteKey] = (usersMap[uid].issues[issue.iid].estimateByDate[noteKey] || 0) + share;
 										}
-										// }
 									}
 								}
 							}
@@ -1000,7 +868,6 @@ export default async (req, res) => {
 			}
 		}
 
-		// --- اضافه کردن ایشوهای خالی برای هر کاربر ---
 		for (const u of Object.values(usersMap)) {
 			u.emptyIssues = [];
 		}
@@ -1046,7 +913,7 @@ export default async (req, res) => {
 				});
 			} catch (e) {}
 			let totalIssueCount = 0;
-			let realnessSum = 0;
+			// let realnessSum = 0;
 			let suspiciousIssueCount = 0;
 
 			for (const u of Object.values(usersMap)) {
