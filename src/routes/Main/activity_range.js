@@ -102,42 +102,37 @@ export default async (req, res) => {
             const endKey = toKey(toDate);
             const isInRange = isoDate => isoDate >= startKey && isoDate <= endKey;
             // --- configurable working days ---
-            const parseWorkdays = input => {
-                  // Accept: comma-separated of numbers 0..6 (Sun..Sat) or names mon,tue,...
-                  const nameToNum = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-                  if (!input) return new Set([1, 2, 3, 4, 5]); // default Mon-Fri
-                  const parts = String(input)
-                        .split(',')
-                        .map(s => s.trim().toLowerCase())
-                        .filter(Boolean);
-                  const out = new Set();
-                  for (const p of parts) {
-                        if (/^\d+$/.test(p)) {
-                              const n = Number(p);
-                              if (n >= 0 && n <= 6) out.add(n);
-                        } else if (nameToNum.hasOwnProperty(p)) {
-                              out.add(nameToNum[p]);
-                        }
-                  }
-                  return out.size > 0 ? out : new Set([1, 2, 3, 4, 5]);
-            };
+            // const parseWorkdays = input => {
+            //       // Accept: comma-separated of numbers 0..6 (Sun..Sat) or names mon,tue,...
+            //       const nameToNum = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+            //       if (!input) return new Set([1, 2, 3, 4, 5]); // default Mon-Fri
+            //       const parts = String(input)
+            //             .split(',')
+            //             .map(s => s.trim().toLowerCase())
+            //             .filter(Boolean);
+            //       const out = new Set();
+            //       for (const p of parts) {
+            //             if (/^\d+$/.test(p)) {
+            //                   const n = Number(p);
+            //                   if (n >= 0 && n <= 6) out.add(n);
+            //             } else if (nameToNum.hasOwnProperty(p)) {
+            //                   out.add(nameToNum[p]);
+            //             }
+            //       }
+            //       return out.size > 0 ? out : new Set([1, 2, 3, 4, 5]);
+            // };
             // Only from env; default to Sunday-Thursday (0..4)
-            const workdaysParam = process.env.WORKDAYS; // e.g., "sun,mon,tue,wed,thu" or "0,1,2,3,4"
+            // const workdaysParam = process.env.WORKDAYS; // e.g., "sun,mon,tue,wed,thu" or "0,1,2,3,4"
             // Default for Iran: all days except Saturday (i.e. sun,mon,tue,wed,thu,fri; skip sat)
-            const workdaysSet = parseWorkdays(workdaysParam || 'sun,mon,tue,wed,thu,fri,sat');
+            // const workdaysSet = parseWorkdays(workdaysParam || 'sun,mon,tue,wed,thu,fri,sat');
             // Build working-day calendar (Saturday to Thursday), respecting tz_offset
             const enumerateWorkingDates = () => {
                   const out = [];
                   const start = new Date(fromDate);
                   const end = new Date(toDate);
-                  // iterate inclusive
                   for (let d = new Date(start); d.getTime() <= end.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
                         const key = toKey(d);
-                        // determine weekday on adjusted date
-                        const adjMs = d.getTime() + (Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0) * 60000;
-                        const adj = new Date(adjMs);
-                        const weekday = adj.getUTCDay(); // 0..6 (Sun..Sat)
-                        if (workdaysSet.has(weekday)) out.push(key);
+                        out.push(key); // هر روز بازه
                   }
                   return out;
             };
@@ -292,9 +287,39 @@ export default async (req, res) => {
                                     } catch (e) {}
                                     for (const note of notes) {
                                           if (!note?.body || !note?.created_at || !note?.author?.id) continue;
-                                          const noteKey = toKey(note.created_at);
                                           const authorId = Number(note.author.id);
+                                          let noteKey = toKey(note.created_at);
+                                          let targetKey = noteKey;
                                           const body = String(note.body).toLowerCase();
+
+                                          // تلاش برای استخراج تاریخ صریح از متن
+                                          // 1) ISO 8601: YYYY-MM-DD (با یا بدون from/on/at)
+                                          const mIso = body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}-\d{2}-\d{2})\b/);
+                                          // 2) Slash: YYYY/MM/DD
+                                          const mSlash = !mIso && body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}\/\d{2}\/\d{2})\b/);
+                                          // 3) Month name: Oct 6, 2025
+                                          const mMon = !mIso && !mSlash && body.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),\s*(\d{4})\b/i);
+                                          let normalized = null;
+                                          if (mIso) {
+                                                normalized = mIso[1];
+                                          } else if (mSlash) {
+                                                normalized = mSlash[1].replace(/\//g, '-');
+                                          } else if (mMon) {
+                                                const mon = mMon[1].toLowerCase();
+                                                const day = String(mMon[2]).padStart(2, '0');
+                                                const year = mMon[3];
+                                                const monMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', sept: '09', oct: '10', nov: '11', dec: '12' };
+                                                const mm = monMap[mon];
+                                                if (mm) normalized = `${year}-${mm}-${day}`;
+                                          }
+                                          if (normalized) {
+                                                targetKey = normalized;
+                                          }
+                                          if (!isInRange(targetKey)) continue;
+                                          // ثبت log برای دیباگ
+                                          try {
+                                                console.log(`[activity-range][log][spent] issue=${issue.iid} author=${note.author.id} body=... dateKey=${targetKey}`);
+                                          } catch(e) {}
 
                                           // --- special-case: remove_time_spent (no amount, clears all spent) ---
                                           if (/\bremoved\s+(?:all\s+)?(?:time\s+spent|spent\s+time)\b/i.test(body)) {
@@ -1695,6 +1720,9 @@ export default async (req, res) => {
                   })),
                   emptyIssues: u.emptyIssues, // اضافه شد
                   labels: Array.from(u.labels),
+                  daysDetail: Array.isArray(u.dailySummary)
+                              ? u.dailySummary.map(d => ({ date: d.date, spent: d.spent || 0, absence: (d.spent || 0) === 0 }))
+                              : []
             }));
 
             // ساخت و ذخیره فایل اکسل خروجی
