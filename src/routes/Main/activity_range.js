@@ -1527,12 +1527,11 @@ export default async (req, res) => {
 				quality: iss.quality,
 				suspiciousReasons: iss.suspiciousReasons,
 			})),
-			emptyIssues: u.emptyIssues, // اضافه شد
+			emptyIssues: u.emptyIssues,
 			labels: Array.from(u.labels),
 			daysDetail: Array.isArray(u.dailySummary) ? u.dailySummary.map(d => ({ date: d.date, spent: d.spent || 0, absence: (d.spent || 0) === 0 })) : [],
 		}));
 
-		// ساخت و ذخیره فایل اکسل خروجی
 		await excel(results);
 
 		res.json(results);
