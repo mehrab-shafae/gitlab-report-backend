@@ -1532,7 +1532,7 @@ export default async (req, res) => {
 			daysDetail: Array.isArray(u.dailySummary) ? u.dailySummary.map(d => ({ date: d.date, spent: d.spent || 0, absence: (d.spent || 0) === 0 })) : [],
 		}));
 
-		await excel(results);
+		await excel(results, users,startKey, endKey);
 
 		res.json(results);
 	} catch (error) {

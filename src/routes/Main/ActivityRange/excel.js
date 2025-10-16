@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
+import { weights } from './config.js';
 
-export default async function (results) {
+export default async function (results, users, startKey, endKey) {
 	try {
 		const workbook = new ExcelJS.Workbook();
 		const wsSummary = workbook.addWorksheet('Summary');
