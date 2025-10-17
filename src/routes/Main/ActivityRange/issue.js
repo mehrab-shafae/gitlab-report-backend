@@ -2,11 +2,10 @@
 import { baseUUrl, token, perPage, projectId } from '../../../config.js';
 import { NOTES_CONCURRENCY } from './config.js';
 
-export default async function() {
+export default async function(allIssues) {
     try{
 
-    let allIssues = [];
-            {
+            
                 const params = new URLSearchParams();
                 params.set('per_page', String(perPage));
                 params.set('page', '1');
@@ -76,7 +75,7 @@ export default async function() {
                         page++;
                     }
                 }
-            }
+            
     
             try {
                 console.log('[issue][pre] users:', userIds.join(','), 'range:', startKey, 'to', endKey);
