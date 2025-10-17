@@ -15,17 +15,6 @@ for (const chunk of issueChunks) {
 					const targetAssignees = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
 					if (targetAssignees.length === 0) return;
 
-					try {
-						console.log(
-							'[activity-range][issue] iid=',
-							issue.iid,
-							'assignees=',
-							recipients
-								.map(p => p && p.id)
-								.filter(Boolean)
-								.join(',')
-						);
-					} catch (e) {}
 
 					// paginate system notes
 					const fetchAllNotes = async systemFlag => {
@@ -56,9 +45,7 @@ for (const chunk of issueChunks) {
 
 					if (Array.isArray(sysNotes)) {
 						const notes = [...sysNotes].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-						try {
-							console.log('[activity-range][notes][system] iid=', issue.iid, 'count=', Array.isArray(notes) ? notes.length : 0);
-						} catch (e) {}
+						
 						for (const note of notes) {
 							if (!note?.body || !note?.created_at || !note?.author?.id) continue;
 							const authorId = Number(note.author.id);
@@ -91,22 +78,13 @@ for (const chunk of issueChunks) {
 							}
 							if (!isInRange(targetKey)) continue;
 							// ثبت log برای دیباگ
-							try {
-								console.log(`[activity-range][log][spent] issue=${issue.iid} author=${note.author.id} body=... dateKey=${targetKey}`);
-							} catch (e) {}
+							
 
 							// --- special-case: remove_time_spent (no amount, clears all spent) ---
 							if (/\bremoved\s+(?:all\s+)?(?:time\s+spent|spent\s+time)\b/i.test(body)) {
 								// Apply remove-all regardless of note date; it zeroes out all tracked spent for this issue in range
 								const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
-								try {
-									console.log('[activity-range][parse][remove_time_spent][pre-author-check]', {
-										iid: issue.iid,
-										at: note.created_at,
-										author: authorId,
-										shareCount: assigneesForShare.length,
-									});
-								} catch (e) {}
+								
 								for (const person of assigneesForShare) {
 									const uidShare = Number(person.id);
 									const uRec = usersMap[uidShare];
@@ -125,14 +103,7 @@ for (const chunk of issueChunks) {
 									uRec.totalSpent -= currentTotal;
 									issRec.spentInRange = 0;
 									issRec.byDate = {};
-									try {
-										console.log('[activity-range][apply][remove_time_spent][per-issue-clear]', {
-											userId: uidShare,
-											iid: issue.iid,
-											delta: -currentTotal,
-											totalSpent: uRec.totalSpent,
-										});
-									} catch (e) {}
+									
 								}
 								continue;
 							}
@@ -160,18 +131,7 @@ for (const chunk of issueChunks) {
 									baseCount = 1;
 									shareSeconds = seconds;
 								}
-								try {
-									console.log('[activity-range][parse][delete]', {
-										iid: issue.iid,
-										at: note.created_at,
-										author: authorId,
-										duration,
-										seconds,
-										shareCount,
-										shareSeconds,
-										forDate: fromDateKey,
-									});
-								} catch (e) {}
+								
 								for (const person of assigneesForShare) {
 									const uidShare = Number(person.id);
 									if (!userIdsSet.has(uidShare)) continue;
@@ -228,15 +188,7 @@ for (const chunk of issueChunks) {
 									usersMap[uidShare].issues[issue.iid].spentInRange = Math.max(0, (usersMap[uidShare].issues[issue.iid].spentInRange || 0) + appliedSigned);
 									usersMap[uidShare].byDate[fromDateKey] = Math.max(0, (usersMap[uidShare].byDate[fromDateKey] || 0) + appliedSigned);
 									usersMap[uidShare].issues[issue.iid].byDate[fromDateKey] = Math.max(0, currentIssueDay + appliedSigned);
-									try {
-										console.log('[activity-range][apply][delete]', {
-											userId: uidShare,
-											iid: issue.iid,
-											forDate: fromDateKey,
-											delta: appliedSigned,
-											totalSpent: usersMap[uidShare].totalSpent,
-										});
-									} catch (e) {}
+									
 								}
 								continue;
 							}
@@ -267,20 +219,7 @@ for (const chunk of issueChunks) {
 								baseCount = 1;
 								shareSeconds = delta;
 							}
-							try {
-								console.log('[activity-range][parse][change]', {
-									iid: issue.iid,
-									at: note.created_at,
-									author: authorId,
-									isAdd,
-									isSub,
-									seconds,
-									delta,
-									shareCount,
-									shareSeconds,
-									dateKey: noteKey,
-								});
-							} catch (e) {}
+							
 							for (const person of assigneesForShare) {
 								const uidShare = Number(person.id);
 								if (!userIdsSet.has(uidShare)) continue;
@@ -345,15 +284,7 @@ for (const chunk of issueChunks) {
 										dateKey: noteKey,
 									});
 								}
-								try {
-									console.log('[activity-range][apply][change]', {
-										userId: uidShare,
-										iid: issue.iid,
-										dateKey: noteKey,
-										delta: appliedDelta,
-										totalSpent: usersMap[uidShare].totalSpent,
-									});
-								} catch (e) {}
+								
 
 								if (isAdd && delta > 0) {
 									if (!Array.isArray(usersMap[uidShare].spendAddLog)) usersMap[uidShare].spendAddLog = [];
@@ -531,9 +462,7 @@ for (const chunk of issueChunks) {
 
 					if (Array.isArray(userNotes)) {
 						const notes = [...userNotes].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-						try {
-							console.log('[activity-range][notes][user] iid=', issue.iid, 'count=', Array.isArray(notes) ? notes.length : 0);
-						} catch (e) {}
+						
 						for (const note of notes) {
 							if (note?.system) continue;
 							if (!note?.created_at || !note?.author?.id) continue;

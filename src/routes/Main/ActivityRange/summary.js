@@ -17,16 +17,7 @@ import { weights } from './config.js';
 
 export default function(req, usersMap, workingDateKeys) {
 for (const u of Object.values(usersMap)) {
-			try {
-				const byDatePreview = Object.entries(u.byDate || {}).slice(0, 10);
-				console.log('[summary][aggregate][user]', {
-					userId: u.userId,
-					username: u.username,
-					totalIssues: Object.keys(u.issues || {}).length,
-					totalSpentPreview: Object.values(u.byDate || {}).reduce((a, b) => a + b, 0),
-					byDatePreview,
-				});
-			} catch (e) {}
+			
 			let totalIssueCount = 0;
 			// let realnessSum = 0;
 			let suspiciousIssueCount = 0;

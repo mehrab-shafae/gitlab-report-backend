@@ -77,15 +77,6 @@ export default async function(allIssues) {
                 }
             
     
-            try {
-                console.log('[issue][pre] users:', userIds.join(','), 'range:', startKey, 'to', endKey);
-                console.log('[issue][pre] fetched issues count:', allIssues.length);
-                const sampleIssueIds = allIssues
-                    .slice(0, 10)
-                    .map(it => it && it.iid)
-                    .filter(Boolean);
-                console.log('[issue][pre] sample issue IIDs:', sampleIssueIds.join(', '));
-            } catch (e) {}
     
             const limit = Math.max(1, NOTES_CONCURRENCY);
             const chunkArray = (arr, size) => {
