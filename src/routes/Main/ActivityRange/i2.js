@@ -39,7 +39,7 @@ export default function (allIssues, usersMap, isInRange, toKey, userIds) {
 			}
 		}
 	}
-
+	// ========================================================================================
 	for (const issue of allIssues) {
 		const createdKey = issue.created_at ? toKey(issue.created_at) : null;
 		if (!createdKey || !isInRange(createdKey)) continue;
@@ -80,15 +80,14 @@ export default function (allIssues, usersMap, isInRange, toKey, userIds) {
 			}
 		}
 	}
-
+	// ========================================================================================
 	for (const u of Object.values(usersMap)) {
 		u.emptyIssues = [];
 	}
+	// ========================================================================================
 	for (const issue of allIssues) {
-		// ایشو خالی یعنی هیچ estimate و هیچ spent ندارد
 		const isEmpty = !issue.time_stats || (!Number(issue.time_stats.time_estimate) && !Number(issue.time_stats.total_time_spent)) || (Number(issue.time_stats.time_estimate) === 0 && Number(issue.time_stats.total_time_spent) === 0);
 		if (!isEmpty) continue;
-		// کاربران assign شده به این ایشو
 		const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
 		const legacy = issue.assignee ? [issue.assignee] : [];
 		const recipients = assignees.length > 0 ? assignees : legacy;
@@ -96,7 +95,6 @@ export default function (allIssues, usersMap, isInRange, toKey, userIds) {
 			if (!person || !person.id) continue;
 			const uid = Number(person.id);
 			if (!usersMap[uid]) continue;
-			// اطلاعات کامل ایشو + isEmpty
 			let u = usersMap[uid];
 			u.emptyIssues.push({
 				iid: issue.iid,

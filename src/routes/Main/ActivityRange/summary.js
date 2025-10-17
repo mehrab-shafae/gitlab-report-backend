@@ -41,7 +41,7 @@ export default function (req, usersMap, workingDateKeys) {
 			};
 		});
 
-		// --- New percent-based thresholds (base day = 8h20m = 30000s by default) ---
+		// ========================================================================================
 		const qBaseSec = Number(req.query.base_seconds ?? process.env.BASE_DAY_SECONDS ?? 30000);
 		const baseDaySeconds = Number.isFinite(qBaseSec) ? qBaseSec : 30000; // 8h20m
 		const qMinPercent = Number(req.query.min_percent ?? process.env.MIN_PERCENT ?? 0.3);
@@ -67,8 +67,8 @@ export default function (req, usersMap, workingDateKeys) {
 		let totalSpent = 0;
 		let totalEstimate = 0;
 		let fakeDaysDetails = [];
+		// ========================================================================================
 
-		// بررسی spend هر روز
 		for (const d of daily) {
 			totalSpent += d.spent;
 			if (d.spent > 0) {
@@ -91,14 +91,12 @@ export default function (req, usersMap, workingDateKeys) {
 				}
 			}
 		}
-
-		// محاسبه estimate از روی تغییرات ثبت‌شده در بازه (پایدار در برابر add/remove/change)
+		// ========================================================================================
 		for (const iss of Object.values(u.issues)) {
 			const v = Number(iss?.estimateInRange) || 0;
 			totalEstimate += v;
 		}
-
-		// بررسی spendهای یکجا (largeOneOffSpends)
+		// ========================================================================================
 		let largeOneOffSpendsCount = 0;
 		for (const iss of Object.values(u.issues)) {
 			const q = iss.quality || {};
@@ -112,7 +110,6 @@ export default function (req, usersMap, workingDateKeys) {
 			}
 		}
 
-		// --- تحلیل افزایش‌های مشکوک spend بر اساس لاگ‌ها ---
 		let suspiciousIncrementCount = 0;
 		if (Array.isArray(u.spendAddLog) && u.spendAddLog.length > 1) {
 			const ordered = [...u.spendAddLog].sort((a, b) => new Date(a.at) - new Date(b.at));
@@ -120,7 +117,6 @@ export default function (req, usersMap, workingDateKeys) {
 				const prev = ordered[i - 1];
 				const curr = ordered[i];
 				if (prev && curr && prev.seconds > 0 && curr.seconds > 0) {
-					// اگر قبلی حدود 1h و بعدی 2h باشد (یا نسبت 1:2 با تلورانس)
 					const ratio = curr.seconds / prev.seconds;
 					if (ratio >= 1.9 && ratio <= 2.1 && prev.seconds >= 50 * 60 && prev.seconds <= 70 * 60) {
 						suspiciousIncrementCount += 1;
@@ -128,28 +124,17 @@ export default function (req, usersMap, workingDateKeys) {
 				}
 			}
 		}
-
-		// امتیازدهی realness
+		// ========================================================================================
 		let realnessScore = 1.0;
-		// کم‌کاری
 		if (daysBelowMin > 0) realnessScore -= Math.min(0.2, 0.03 * daysBelowMin);
-		// normal (30%..70%): no bonus, no penalty
-		// positive band (60%..90%): give positive points
 		if (daysPositive > 0) realnessScore += Math.min(0.12, 0.012 * daysPositive);
-		// >90%..<=10h: excellent but no points (no change)
-		// fake spend (>10h)
 		if (daysFake > 0) realnessScore -= Math.min(0.5, 0.15 * daysFake);
-		// fake spend خیلی زیاد (بیش از ۱۲ ساعت)
 		const daysExtremeFake = daily.filter(d => d.spent > 12 * H).length;
 		if (daysExtremeFake > 0) realnessScore -= Math.min(0.6, 0.25 * daysExtremeFake);
-		// large one-off spends
 		if (largeOneOffSpendsCount > 0) realnessScore -= Math.min(0.4, 0.1 * largeOneOffSpendsCount);
-		// افزایش‌های مشکوک (پنالتی کم به دلیل احتمال خطا)
 		if (suspiciousIncrementCount > 0) realnessScore -= Math.min(0.05, 0.01 * suspiciousIncrementCount);
-		// محدودیت امتیاز
 		realnessScore = Math.max(0, Math.min(1, realnessScore));
-
-		// quality و امتیاز ایشوها (در گام بعدی کامل‌تر می‌شود)
+		// ========================================================================================
 		for (const iss of Object.values(u.issues)) {
 			const q = iss.quality || {};
 			const reasons = [];
@@ -167,7 +152,7 @@ export default function (req, usersMap, workingDateKeys) {
 			totalIssueCount += 1;
 			if (reasons.length > 0) suspiciousIssueCount += 1;
 		}
-
+		// ========================================================================================
 		u.totalIssueCount = totalIssueCount;
 		u.suspiciousIssueCount = suspiciousIssueCount;
 		u.realnessPercent = Number((realnessScore * 100).toFixed(2));
@@ -182,7 +167,7 @@ export default function (req, usersMap, workingDateKeys) {
 		u.daysPositive = daysPositive; // 60%..90%
 		u.daysOver90NoPoint = daysOver90NoPoint; // >90%..<=10h
 		u.totalSpent = totalSpent;
-		// --- ساخت خلاصه روزانه estimate بر اساس per-issue estimateByDate ---
+		// ========================================================================================
 		let estimateDaily = workingDateKeys.map(k => {
 			const issuesArr = [];
 			let estSum = 0;
@@ -202,16 +187,13 @@ export default function (req, usersMap, workingDateKeys) {
 				issueIids,
 			};
 		});
-		// Fallback: if no estimate changes occurred within range but issues have current estimates,
-		// attribute each issue's current time_estimate to the first in-range activity date for that issue
-		// (or the first working day if no activity days), so users can see non-zero estimates in the period.
+
 		const totalDailyEst = estimateDaily.reduce((s, d) => s + (d.estimate || 0), 0);
 		if (totalDailyEst === 0 && workingDateKeys.length > 0) {
 			const firstDay = workingDateKeys[0];
 			for (const iss of Object.values(u.issues || {})) {
 				const currentEstimate = Number(iss?.time_stats?.time_estimate || 0);
 				if (!currentEstimate || currentEstimate <= 0) continue;
-				// find first in-range activity date for this issue for this user
 				const perDay = iss.byDate || {};
 				const activeDay =
 					Object.keys(perDay)
@@ -226,7 +208,7 @@ export default function (req, usersMap, workingDateKeys) {
 				}
 			}
 		}
-		// پس از اعمال fallback، totalEstimate را از روی خلاصه نهایی روزانه محاسبه کن
+		// ========================================================================================
 		const totalEstimateFinal = estimateDaily.reduce((s, d) => s + (d.estimate || 0), 0);
 		u.totalEstimate = totalEstimateFinal;
 		u.estimateDailySummary = estimateDaily;
@@ -237,28 +219,25 @@ export default function (req, usersMap, workingDateKeys) {
 			issues: d.issues,
 			issueIids: d.issueIids,
 		}));
-		// --- شاخص‌های جدید quality برای هر ایشو ---
+		// ========================================================================================
 		for (const iss of Object.values(u.issues)) {
 			const q = iss.quality || {};
-			// توزیع spend در روزهای مختلف
 			const spentDistribution = {};
 			if (iss.spentInRange && iss.byDate) {
 				for (const [date, spent] of Object.entries(iss.byDate)) {
 					if (spent > 0) spentDistribution[date] = spent;
 				}
 			}
+			// ========================================================================================
 			q.spentDistributionDays = Object.keys(spentDistribution).length;
-			// تعداد ویرایش توضیح
 			q.descriptionEdits = q.descriptionEditsInRange || 0;
-			// نسبت spent به estimate
 			const estimate = Number(iss?.time_stats?.time_estimate) || 0;
 			const spentInRange = Number(iss?.spentInRange) || 0;
 			q.spentToEstimateRatio = estimate > 0 ? Number(spentInRange / estimate).toFixed(2) : null;
-			// تعداد کامنت مفید
 			q.commentsInRange = iss.commentsInRange || 0;
-			// --- شاخص کیفیت کلی ایشو (qualityScore)
 			let qualityScore = 1.0;
 			const qualityPenalties = [];
+			// ========================================================================================
 			if (q.hasTitle === false) {
 				qualityScore -= 0.18;
 				qualityPenalties.push('missing_title');
@@ -299,44 +278,36 @@ export default function (req, usersMap, workingDateKeys) {
 				qualityScore -= 0.22;
 				qualityPenalties.push('large_one_off_spend');
 			}
-			// spent توزیع نشده (همه در یک روز)
 			if (q.spentDistributionDays <= 1 && iss.spentInRange > 2 * 3600) {
 				qualityScore -= 0.18;
 				qualityPenalties.push('undistributed_spend');
 			}
-			// نسبت spent به estimate خیلی کم یا زیاد
 			if (q.spentToEstimateRatio && (q.spentToEstimateRatio < 0.5 || q.spentToEstimateRatio > 1.5)) {
 				qualityScore -= 0.15;
 				qualityPenalties.push('bad_spent_to_estimate_ratio');
 			}
-			// تعداد کامنت مفید کم
 			if (q.commentsInRange < 1) {
 				qualityScore -= 0.08;
 				qualityPenalties.push('few_comments');
 			}
-			// اگر بیش از ۳ مورد مشکل quality وجود داشته باشد، جریمه اضافی
 			if (qualityPenalties.length >= 3) qualityScore -= 0.15;
-			// محدودیت امتیاز
+			// ========================================================================================
 			qualityScore = Math.max(0, Math.min(1, qualityScore));
 			q.qualityScore = Number(qualityScore.toFixed(2));
 			q.qualityPenalties = qualityPenalties;
-			// پاداش همراستایی spent و estimate: هرچه نسبت نزدیک‌تر به ۱، امتیاز بهتر
-			// از نسبت spentToEstimateRatio استفاده می‌کنیم که در بالا محاسبه شد
 			let estimateAlignment = 0;
 			if (q.spentToEstimateRatio !== null && q.spentToEstimateRatio !== undefined) {
 				const ratioNum = Number(q.spentToEstimateRatio);
 				if (!Number.isNaN(ratioNum)) {
 					const diff = Math.abs(1 - ratioNum);
-					// نگاشت دیف به بازه [0,1] (هرچه کمتر بهتر)
 					const alignment = Math.max(0, 1 - Math.min(1, diff));
 					estimateAlignment = Number(alignment.toFixed(2));
 				}
 			}
-			q.estimateAlignment = estimateAlignment; // برای گزارش‌گیری
+			q.estimateAlignment = estimateAlignment;
 			iss.quality = q;
 		}
-
-		// --- summary برای هر یوزر ---
+		// ========================================================================================
 		u.summary = {
 			totalDays: u.totalDays,
 			healthyDays: u.healthyDays,
@@ -360,34 +331,25 @@ export default function (req, usersMap, workingDateKeys) {
 			},
 			largeOneOffSpends: Object.values(u.issues).flatMap(iss => (iss.quality?.largeOneOffSpends || []).map(s => ({ iid: iss.iid, at: s.at, seconds: s.seconds, dateKey: s.dateKey }))),
 		};
-		// --- trend و پیام راهنما برای هر یوزر ---
 		let guidance = [];
-		// پیام absence کلی
+		// ========================================================================================
 		if (u.absenceCount > 0) {
 			guidance.push(`در ${u.absenceCount} روز (${u.absenceDays.join(', ')}) هیچ فعالیتی ثبت نشده است.`);
 		}
-		// پیام fake spend کلی
 		if (u.daysFake > 0) {
 			const fakeDates = u.fakeDaysDetails.filter(f => !f.type).map(f => f.date);
 			if (fakeDates.length > 0) guidance.push(`در روزهای ${fakeDates.join(', ')} spend غیرواقعی (بیش از ۱۰ ساعت) ثبت شده است.`);
 			const extremeFakeDates = u.dailySummary.filter(d => d.spent > 12 * 3600).map(d => d.date);
 			if (extremeFakeDates.length > 0) guidance.push(`در روزهای ${extremeFakeDates.join(', ')} spend بسیار غیرواقعی (بیش از ۱۲ ساعت) ثبت شده است.`);
 		}
-		// پیام spend کمتر از حداقل
 		const belowMinDates = u.dailySummary.filter(d => d.spent > 0 && d.spent < targetMin).map(d => d.date);
 		if (belowMinDates.length > 0) guidance.push(`در روزهای ${belowMinDates.join(', ')} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
-		// پیام large one-off spends
 		if (u.largeOneOffSpendsCount > 0) guidance.push('چند spend بزرگ یکجا ثبت شده که مشکوک به فیک بودن است.');
-		// پیام افزایش‌های مشکوک
 		if (u.suspiciousIncrementCount > 0) guidance.push(`در ${u.suspiciousIncrementCount} مورد افزایش مشکوک spend (۱ ساعت → ۲ ساعت) مشاهده شد.`);
-		// کیفیت ایشوها
 		if (u.summary.qualityDistribution.weak > 0) guidance.push('برخی ایشوها کیفیت پایینی دارند. لطفاً عنوان، توضیح و برآورد زمانی را کامل‌تر وارد کنید.');
 		if (u.summary.qualityDistribution.good === 0) guidance.push('هیچ ایشوی با کیفیت عالی ثبت نشده است.');
-		// پیام مثبت absence
 		if (u.absenceCount === 0) guidance.push('در تمام روزهای کاری این بازه فعالیت ثبت شده است. آفرین!');
-		// پیام مثبت quality
 		if (u.summary.qualityDistribution.weak === 0 && u.summary.qualityDistribution.good > 0) guidance.push('تمام ایشوهای شما کیفیت قابل قبولی دارند.');
-		// trend عملکرد (ساده: مقایسه نیمه اول و دوم بازه)
 		let trend = 'stable';
 		if (u.dailySummary && u.dailySummary.length > 4) {
 			const mid = Math.floor(u.dailySummary.length / 2);
@@ -397,8 +359,8 @@ export default function (req, usersMap, workingDateKeys) {
 			const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
 			const totalSum = firstHalfSum + secondHalfSum;
 			const H = 3600;
-			const minSpendForTrend = 3 * H; // حداقل ۳ ساعت مجموع برای تحلیل روند
-			const minAbsoluteDelta = 1 * H; // حداقل اختلاف میانگین ۱ ساعت
+			const minSpendForTrend = 3 * H;
+			const minAbsoluteDelta = 1 * H;
 			if (totalSum >= minSpendForTrend) {
 				if (secondHalf > firstHalf * 1.1 && secondHalf - firstHalf >= minAbsoluteDelta) trend = 'improving';
 				else if (secondHalf < firstHalf * 0.9 && firstHalf - secondHalf >= minAbsoluteDelta) trend = 'declining';
@@ -406,7 +368,7 @@ export default function (req, usersMap, workingDateKeys) {
 		}
 		u.summary.guidance = guidance;
 		u.summary.trend = trend;
-		// --- شناسایی absence (روزهای بدون فعالیت) ---
+		// ========================================================================================
 		const absenceDays = [];
 		const allDates = workingDateKeys;
 		for (const date of allDates) {
@@ -415,7 +377,7 @@ export default function (req, usersMap, workingDateKeys) {
 		}
 		u.absenceDays = absenceDays;
 		u.absenceCount = absenceDays.length;
-		// --- گسترش dailySummary برای نمایش روزهای غیبت با spent صفر ---
+		// ========================================================================================
 		try {
 			const currentSummary = Array.isArray(u.dailySummary) ? u.dailySummary : [];
 			const currentDates = new Set(currentSummary.map(d => d.date));
@@ -432,10 +394,8 @@ export default function (req, usersMap, workingDateKeys) {
 			}
 			expandedDaily.sort((a, b) => a.date.localeCompare(b.date));
 			u.dailySummary = expandedDaily;
-		} catch (e) {
-			// ignore expansion errors to avoid breaking existing logic
-		}
-		// --- بروزرسانی totalDays بر اساس روزهای کاری بازه ---
+		} catch (e) {}
+		// ========================================================================================
 		try {
 			const workingDaysCount = allDates.length;
 			u.totalDays = workingDaysCount;
@@ -445,7 +405,7 @@ export default function (req, usersMap, workingDateKeys) {
 				u.summary.avgDailySpent = newAvg;
 			}
 		} catch (e) {}
-		// --- محاسبه دوباره trend بر اساس dailySummary توسعه‌یافته ---
+		// ========================================================================================
 		try {
 			if (u.dailySummary && u.dailySummary.length > 4) {
 				const mid = Math.floor(u.dailySummary.length / 2);
@@ -465,14 +425,13 @@ export default function (req, usersMap, workingDateKeys) {
 				u.summary.trend = trend;
 			}
 		} catch (e) {}
-		// عدم اعمال جریمه بابت absence طبق نیازمندی‌ها
+		// ========================================================================================
 		if (!u.summary) u.summary = {};
 		if (!u.summary.guidance) u.summary.guidance = [];
-		// --- guidance تاریخ‌دار absence ---
 		for (const date of absenceDays) {
 			u.summary.guidance.push(`در تاریخ ${date} هیچ فعالیتی ثبت نشده است.`);
 		}
-		// --- guidance fake spend و زیر حداقل ---
+		// ========================================================================================
 		if (u.dailySummary) {
 			for (const day of u.dailySummary) {
 				if (day.spent === 0) continue;
@@ -485,7 +444,7 @@ export default function (req, usersMap, workingDateKeys) {
 		}
 		u.summary.absenceDays = absenceDays;
 		u.summary.absenceCount = absenceDays.length;
-
+		// ========================================================================================
 		for (const iss of Object.values(u.issues)) {
 			if (Array.isArray(iss.suspiciousReasons) && iss.suspiciousReasons.length > 0) {
 				iss.suspiciousReasonsText = iss.suspiciousReasons.map(r => reasonMap[r] || r);
@@ -493,10 +452,8 @@ export default function (req, usersMap, workingDateKeys) {
 				iss.suspiciousReasonsText = [];
 			}
 		}
-		// --- breakdown امتیازها ---
-		// realness: درصد واقعیت فعالیت (۰ تا ۱)
+		// ========================================================================================
 		const realnessScoreBreakdown = (u.realnessPercent || 0) / 100;
-		// quality: میانگین qualityScore ایشوها (۰ تا ۱)
 		let qualityScoreBreakdown = 0;
 		let qualityCountBreakdown = 0;
 		for (const iss of Object.values(u.issues)) {
@@ -505,12 +462,10 @@ export default function (req, usersMap, workingDateKeys) {
 				qualityCountBreakdown++;
 			}
 		}
+		// ========================================================================================
 		qualityScoreBreakdown = qualityCountBreakdown > 0 ? qualityScoreBreakdown / qualityCountBreakdown : 0;
-		// absence: جریمه اعمال نمی‌شود؛ نسبت را صفر نگه می‌داریم
 		const absenceRatioBreakdown = 0;
-		// totalScore: ترکیبی از وزن‌های پویا
 		let totalScore = Math.max(0, Math.min(1, weights.realness * realnessScoreBreakdown + weights.quality * qualityScoreBreakdown + weights.absence * (1 - absenceRatioBreakdown)));
-		// پاداش همراستایی spent و estimate در سطح یوزر (میانگین alignment آیتم‌ها)
 		let userEstimateAlignment = 0;
 		let userEstimateAlignmentCount = 0;
 		for (const iss of Object.values(u.issues)) {
@@ -520,11 +475,10 @@ export default function (req, usersMap, workingDateKeys) {
 				userEstimateAlignmentCount += 1;
 			}
 		}
+		// ========================================================================================
 		userEstimateAlignment = userEstimateAlignmentCount > 0 ? userEstimateAlignment / userEstimateAlignmentCount : 0;
-		// حداکثر ۰.05 امتیاز اضافه بر اساس همراستایی خوب
 		const estimateBonus = Math.min(0.05, 0.05 * userEstimateAlignment);
 		totalScore = Math.min(1, totalScore + estimateBonus);
-		// اضافه به summary
 		if (!u.summary) u.summary = {};
 		u.summary.scores = {
 			realness: Number(realnessScoreBreakdown.toFixed(2)),
@@ -534,7 +488,7 @@ export default function (req, usersMap, workingDateKeys) {
 			estimateAlignment: Number(userEstimateAlignment.toFixed(2)),
 		};
 		u.summary.weightsUsed = { ...weights };
-		// --- guidance مثبت و منفی بر اساس trend ---
+		// ========================================================================================
 		if (u.summary && u.summary.trend) {
 			if (u.summary.trend === 'improving') {
 				u.summary.guidance.push('عملکرد شما در روزهای اخیر رو به بهبود است. ادامه دهید!');
@@ -542,7 +496,6 @@ export default function (req, usersMap, workingDateKeys) {
 				u.summary.guidance.push('عملکرد شما در روزهای اخیر افت داشته است. لطفاً دقت بیشتری داشته باشید.');
 			}
 		}
-		// پیام راهنما بر اساس همراستایی estimate/spent
 		if (u.summary && typeof u.summary.scores?.estimateAlignment === 'number') {
 			if (u.summary.scores.estimateAlignment >= 0.8) {
 				u.summary.guidance.push('همراستایی خوبی بین زمان برآورد و زمان مصرف‌شده دارید.');
@@ -550,7 +503,6 @@ export default function (req, usersMap, workingDateKeys) {
 				u.summary.guidance.push('اختلاف قابل توجهی بین estimate و spent دیده می‌شود. دقت در ثبت زمان را افزایش دهید.');
 			}
 		}
-		// --- تحلیل توزیع spend در روزهای بازه ---
 		if (u.dailySummary && u.dailySummary.length > 0) {
 			const totalSpent = u.dailySummary.reduce((sum, d) => sum + d.spent, 0);
 			const sortedDays = [...u.dailySummary].sort((a, b) => b.spent - a.spent);
@@ -568,28 +520,23 @@ export default function (req, usersMap, workingDateKeys) {
 				u.summary.guidance.push('بیش از ۶۰٪ spend شما فقط در دو روز ثبت شده است. بهتر است spend را در روزهای بیشتری توزیع کنید.');
 			}
 		}
-		// --- شاخص‌های جدید ---
-		// Consistency: درصد روزهایی که spend بین ۷ تا ۹ ساعت است
+		// ========================================================================================
 		const consistentDays = u.dailySummary.filter(d => d.spent >= 7 * 3600 && d.spent <= 9 * 3600).length;
 		const consistencyRatio = u.totalDays > 0 ? consistentDays / u.totalDays : 0;
-		// Diversity: تعداد ایشوهای مختلف که کاربر spend داشته
 		const diversityCount = Object.values(u.issues).filter(iss => iss.spentInRange > 0).length;
-		// Collaboration: تعداد کامنت‌هایی که کاربر روی ایشوهای دیگران گذاشته (نیاز به شمارش جداگانه)
 		let collaborationCount = 0;
 		if (u.collaborationNotes) collaborationCount = u.collaborationNotes.length;
-		// تاثیر در امتیازدهی
 		let bonus = 0;
 		if (consistencyRatio > 0.7) bonus += 0.05;
 		if (diversityCount >= 3) bonus += 0.05;
 		if (collaborationCount >= 2) bonus += 0.05;
-		// اضافه به totalScore
 		u.summary.scores.consistency = Number(consistencyRatio.toFixed(2));
 		u.summary.scores.diversity = diversityCount;
 		u.summary.scores.collaboration = collaborationCount;
 		u.summary.scores.totalScore = Math.min(1, u.summary.scores.totalScore + bonus);
-		// پیام راهنما
 		if (consistencyRatio > 0.7) u.summary.guidance.push('ثبات خوبی در ثبت spend روزانه دارید.');
 		if (diversityCount >= 3) u.summary.guidance.push('روی چند ایشوی مختلف کار کرده‌اید که نشانه تنوع کار است.');
 		if (collaborationCount >= 2) u.summary.guidance.push('در همکاری تیمی (کامنت روی ایشوهای دیگران) فعال بوده‌اید.');
+		// ========================================================================================
 	}
 }

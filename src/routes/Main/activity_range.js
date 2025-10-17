@@ -9,7 +9,7 @@ import SummaryFunc from './ActivityRange/summary.js';
 export default async (req, res) => {
 	try {
 		const { users, from, to } = req.query;
-
+		// ========================================================================================
 		if (!users || !from || !to) {
 			return res.status(400).json({ message: 'پارامترهای users, from, to الزامی هستند' });
 		}
@@ -31,7 +31,7 @@ export default async (req, res) => {
 				req.query.users = currentUserId.toString();
 			}
 		}
-
+		// ========================================================================================
 		const userIds = String(users)
 			.split(',')
 			.map(s => s.trim())
@@ -42,7 +42,7 @@ export default async (req, res) => {
 		if (userIds.length === 0) {
 			return res.status(400).json({ message: 'حداقل یک userId معتبر لازم است' });
 		}
-
+		// ========================================================================================
 		const fromDate = new Date(from);
 		const toDate = new Date(to);
 		if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
@@ -60,6 +60,7 @@ export default async (req, res) => {
 		const endKey = toKey(toDate);
 		const isInRange = isoDate => isoDate >= startKey && isoDate <= endKey;
 
+		// ========================================================================================
 		const enumerateWorkingDates = () => {
 			const out = [];
 			const start = new Date(fromDate);
@@ -72,20 +73,20 @@ export default async (req, res) => {
 		};
 		const workingDateKeys = enumerateWorkingDates();
 
+		// ========================================================================================
 		let allIssues = [];
 		const usersMap = {};
+		// ========================================================================================
 
-		// issues
-		const issueChunks = await IssueFunc(allIssues);
+		const issueChunks = /* issues */ await IssueFunc(allIssues);
 
-		// spent
-		await SpentFunc(usersMap, issueChunks, userIdsSet, toKey, isInRange, userIds);
+		/* spent */ await SpentFunc(usersMap, issueChunks, userIdsSet, toKey, isInRange, userIds);
 
 		/* misc i2 */ I2Func(allIssues, usersMap, isInRange, toKey, userIds);
 
-		// summary
-		SummaryFunc(req, usersMap, workingDateKeys);
+		/* summary */ SummaryFunc(req, usersMap, workingDateKeys);
 
+		// ========================================================================================
 		const results = Object.values(usersMap).map(u => ({
 			userId: u.userId,
 			username: u.username,
@@ -117,6 +118,7 @@ export default async (req, res) => {
 			daysDetail: Array.isArray(u.dailySummary) ? u.dailySummary.map(d => ({ date: d.date, spent: d.spent || 0, absence: (d.spent || 0) === 0 })) : [],
 		}));
 
+		// ========================================================================================
 		await excel(results, users, startKey, endKey);
 
 		res.json(results);

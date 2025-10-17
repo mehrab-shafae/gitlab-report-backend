@@ -5,6 +5,7 @@ import { attribution } from './config.js';
 export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRange, userIds) {
 	for (const chunk of issueChunks) {
 		await Promise.allSettled(
+			// ========================================================================================
 			chunk.map(async issue => {
 				if (!issue?.iid) return;
 				const assignees = Array.isArray(issue.assignees) ? issue.assignees : [];
@@ -14,7 +15,6 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 				const targetAssignees = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
 				if (targetAssignees.length === 0) return;
 
-				// paginate system notes
 				const fetchAllNotes = async systemFlag => {
 					let page = 1;
 					const out = [];
@@ -38,12 +38,12 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 					}
 					return out;
 				};
-
+				// ========================================================================================
 				const [sysNotes, userNotes] = await Promise.all([fetchAllNotes(true), fetchAllNotes(false)]);
 
 				if (Array.isArray(sysNotes)) {
 					const notes = [...sysNotes].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
+					// ========================================================================================
 					for (const note of notes) {
 						if (!note?.body || !note?.created_at || !note?.author?.id) continue;
 						const authorId = Number(note.author.id);
@@ -51,12 +51,8 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 						let targetKey = noteKey;
 						const body = String(note.body).toLowerCase();
 
-						// تلاش برای استخراج تاریخ صریح از متن
-						// 1) ISO 8601: YYYY-MM-DD (با یا بدون from/on/at)
 						const mIso = body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}-\d{2}-\d{2})\b/);
-						// 2) Slash: YYYY/MM/DD
 						const mSlash = !mIso && body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}\/\d{2}\/\d{2})\b/);
-						// 3) Month name: Oct 6, 2025
 						const mMon = !mIso && !mSlash && body.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),\s*(\d{4})\b/i);
 						let normalized = null;
 						if (mIso) {
@@ -75,11 +71,8 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 							targetKey = normalized;
 						}
 						if (!isInRange(targetKey)) continue;
-						// ثبت log برای دیباگ
 
-						// --- special-case: remove_time_spent (no amount, clears all spent) ---
 						if (/\bremoved\s+(?:all\s+)?(?:time\s+spent|spent\s+time)\b/i.test(body)) {
-							// Apply remove-all regardless of note date; it zeroes out all tracked spent for this issue in range
 							const assigneesForShare = recipients.filter(p => p && userIdsSet.has(Number(p.id)));
 
 							for (const person of assigneesForShare) {
@@ -104,8 +97,7 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 							continue;
 						}
 
-						// Do not require author to be selected or an assignee; attribution logic below will handle distribution
-
+						// ========================================================================================
 						const delMatch = body.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
 						if (delMatch) {
 							const duration = delMatch[1];
@@ -117,8 +109,6 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 							seconds = Math.abs(seconds);
 							if (seconds === 0) continue;
 
-							// Attribution strategy: author-first vs shared
-							// Determine attribution targets
 							let assigneesForShare = recipients;
 							let baseCount = assigneesForShare.length || 1;
 							let shareSeconds = seconds / baseCount;
@@ -203,8 +193,6 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 						seconds = Math.abs(seconds);
 						if (seconds === 0) continue;
 
-						// Attribution strategy: author-first vs shared
-						// Determine attribution targets and share by total assignees count to avoid inflating shares
 						let assigneesForShare = recipients;
 						let baseCount = assigneesForShare.length || 1;
 						const delta = isSub ? -seconds : seconds;
@@ -289,14 +277,12 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 								});
 							}
 						}
-
+						// ========================================================================================
 						{
 							const noteKey = toKey(note.created_at);
 							const body = String(note.body).toLowerCase();
 							const authorId = Number(note.author.id);
-							// remove all estimate
 							if (/\bremoved\s+(?:all\s+)?(?:time\s+estimate|estimate\s+time)\b/i.test(body)) {
-								// zero-out estimate regardless of date for consistency
 								let assigneesForShare = recipients;
 								if (attribution === 'author') {
 									assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
@@ -351,10 +337,8 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 									const curr = Number(issRec.estimateCurrent || 0);
 									const deltaSet = -curr;
 									issRec.estimateCurrent = 0;
-									// attribution share
 									const assigneesCount = attribution === 'author' ? 1 : recipients.length || 1;
 									const share = assigneesCount > 0 ? deltaSet / assigneesCount : deltaSet;
-									// record to estimateInRange regardless of date (consistent with spent remove-all)
 									usersMap[uid].totalEstimate = (usersMap[uid].totalEstimate || 0) + share;
 									issRec.estimateInRange = (issRec.estimateInRange || 0) + share;
 									issRec.estimateByDate[noteKey] = (issRec.estimateByDate[noteKey] || 0) + share;
@@ -364,14 +348,12 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 								const removed = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && body.includes('time estimate');
 								const changedMatch = body.match(/changed\s+time\s+estimate\s+to\s+(.+?)(?:\.|$)/i);
 								if (!(added || removed || changedMatch)) {
-									// nothing
 								} else {
 									let desiredDelta = 0;
 									if (changedMatch) {
 										let seconds = 0;
 										const src = changedMatch[1];
 										seconds = parseDurationString(src);
-										// desiredDelta = toValue - current
 										const curr = Number((usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id] && usersMap[userIdsSet.has(authorId) ? authorId : recipients[0]?.id].issues[issue.iid]?.estimateCurrent) || 0);
 										desiredDelta = seconds - curr;
 									} else {
@@ -384,14 +366,10 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 										seconds = Math.abs(seconds);
 										desiredDelta = added ? seconds : -seconds;
 									}
-									// apply per recipients/author; clamp per issue current not to go below zero
 									let assigneesForShare = recipients;
 									if (attribution === 'author') {
 										assigneesForShare = [{ id: authorId, username: note.author.username, name: note.author.name, avatar_url: note.author.avatar_url }];
 									}
-									// We need a single issue record to track current; pick any target user to hold the shared state if absent
-									// We'll ensure issue record exists for each selected user when recording in-range deltas
-									// Compute clamp based on a shared current; use a temporary holder
 									if (!issue.__estimateCurrentTmp) issue.__estimateCurrentTmp = 0;
 									let currShared = issue.__estimateCurrentTmp;
 									const clampedDelta = currShared + desiredDelta < 0 ? -currShared : desiredDelta;
@@ -453,7 +431,7 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 						}
 					}
 				}
-
+				// ========================================================================================
 				if (Array.isArray(userNotes)) {
 					const notes = [...userNotes].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
@@ -465,9 +443,7 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 						const authorId = Number(note.author.id);
 						if (!userIds.includes(authorId)) continue;
 						const isAssignee = recipients.some(p => p && Number(p.id) === authorId);
-						// collaboration: user commented but is not an assignee
 						if (!isAssignee) {
-							// initialize user record if needed
 							if (!usersMap[authorId]) {
 								usersMap[authorId] = {
 									userId: authorId,

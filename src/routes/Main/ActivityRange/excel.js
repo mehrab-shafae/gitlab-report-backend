@@ -59,7 +59,6 @@ export default async function (results, users, startKey, endKey) {
 			}
 		}
 
-		// Header styling and filters for Summary and Issues
 		try {
 			wsSummary.getRow(1).font = { bold: true };
 			wsSummary.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
@@ -80,7 +79,6 @@ export default async function (results, users, startKey, endKey) {
 			wsIssues.views = [{ state: 'frozen', ySplit: 1 }];
 		} catch (e) {}
 
-		// Daily worksheet (per-user daily spend including absences)
 		const wsDaily = workbook.addWorksheet('Daily');
 		wsDaily.columns = [
 			{ header: 'User ID', key: 'userId', width: 12 },
@@ -119,7 +117,6 @@ export default async function (results, users, startKey, endKey) {
 			wsDaily.views = [{ state: 'frozen', ySplit: 1 }];
 		} catch (e) {}
 
-		// IssueQuality worksheet (detailed quality metrics per issue)
 		const wsIssueQuality = workbook.addWorksheet('IssueQuality');
 		wsIssueQuality.columns = [
 			{ header: 'User ID', key: 'userId', width: 12 },
@@ -168,7 +165,6 @@ export default async function (results, users, startKey, endKey) {
 			wsIssueQuality.views = [{ state: 'frozen', ySplit: 1 }];
 		} catch (e) {}
 
-		// Guidance worksheet (per-user guidance messages)
 		const wsGuidance = workbook.addWorksheet('Guidance');
 		wsGuidance.columns = [
 			{ header: 'User ID', key: 'userId', width: 12 },
@@ -189,7 +185,6 @@ export default async function (results, users, startKey, endKey) {
 			wsGuidance.views = [{ state: 'frozen', ySplit: 1 }];
 		} catch (e) {}
 
-		// Absences worksheet (dates with zero spent)
 		const wsAbsences = workbook.addWorksheet('Absences');
 		wsAbsences.columns = [
 			{ header: 'User ID', key: 'userId', width: 12 },
@@ -210,7 +205,6 @@ export default async function (results, users, startKey, endKey) {
 			wsAbsences.views = [{ state: 'frozen', ySplit: 1 }];
 		} catch (e) {}
 
-		// Labels worksheet (distinct labels per user)
 		const wsLabels = workbook.addWorksheet('Labels');
 		wsLabels.columns = [
 			{ header: 'User ID', key: 'userId', width: 12 },
@@ -230,7 +224,6 @@ export default async function (results, users, startKey, endKey) {
 			wsLabels.views = [{ state: 'frozen', ySplit: 1 }];
 		} catch (e) {}
 
-		// Metadata worksheet (request params and weights)
 		const wsMeta = workbook.addWorksheet('Metadata');
 		wsMeta.columns = [
 			{ header: 'Key', key: 'key', width: 24 },
@@ -250,22 +243,17 @@ export default async function (results, users, startKey, endKey) {
 			wsMeta.views = [{ state: 'frozen', ySplit: 1 }];
 		} catch (e) {}
 
-		// Totals/Averages rows
 		try {
-			// Summary totals at the end
 			const lastSummaryRow = wsSummary.rowCount + 1;
 			wsSummary.addRow({ name: 'Totals/Averages:' });
-			// totalSpentH sum, others average
 			wsSummary.getCell(`D${lastSummaryRow}`).value = { formula: `SUM(D2:D${lastSummaryRow - 1})` };
 			wsSummary.getCell(`E${lastSummaryRow}`).value = { formula: `SUM(E2:E${lastSummaryRow - 1})` };
-			// Spent/Estimate average
 			wsSummary.getCell(`G${lastSummaryRow}`).value = { formula: `AVERAGE(G2:G${lastSummaryRow - 1})` };
 			wsSummary.getCell(`H${lastSummaryRow}`).value = { formula: `AVERAGE(H2:H${lastSummaryRow - 1})` };
 			wsSummary.getCell(`I${lastSummaryRow}`).value = { formula: `AVERAGE(I2:I${lastSummaryRow - 1})` };
 			wsSummary.getCell(`J${lastSummaryRow}`).value = { formula: `AVERAGE(J2:J${lastSummaryRow - 1})` };
 			wsSummary.getRow(lastSummaryRow).font = { bold: true };
 
-			// Issues totals
 			const lastIssuesRow = wsIssues.rowCount + 1;
 			wsIssues.addRow({ title: 'Totals:' });
 			wsIssues.getCell(`F${lastIssuesRow}`).value = { formula: `SUM(F2:F${lastIssuesRow - 1})` };
@@ -273,9 +261,7 @@ export default async function (results, users, startKey, endKey) {
 			wsIssues.getRow(lastIssuesRow).font = { bold: true };
 		} catch (e) {}
 
-		// Light conditional accents by value thresholds (applied as fill colors)
 		try {
-			// Summary score color cues
 			for (let r = 2; r <= wsSummary.rowCount; r++) {
 				const scoreCell = wsSummary.getCell(`H${r}`);
 				const scoreVal = Number(scoreCell.value);
@@ -285,7 +271,6 @@ export default async function (results, users, startKey, endKey) {
 					else scoreCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE7E9' } };
 				}
 			}
-			// IssueQuality qualityScore cues
 			for (let r = 2; r <= wsIssueQuality.rowCount; r++) {
 				const qCell = wsIssueQuality.getCell(`E${r}`);
 				const qVal = Number(qCell.value);
