@@ -1,5 +1,5 @@
 
-import { weights } from './ActivityRange/config.js';
+import { weights } from './config.js';
 
 			const H = 3600;
 
@@ -14,7 +14,7 @@ import { weights } from './ActivityRange/config.js';
 				many_description_edits: 'توضیحات ایشو بیش از حد ویرایش شده است.',
 				large_one_off_spend: 'یک spend بزرگ یکجا ثبت شده است.',
 			};
-            
+
 export default function(req, usersMap, workingDateKeys) {
 for (const u of Object.values(usersMap)) {
 			try {
