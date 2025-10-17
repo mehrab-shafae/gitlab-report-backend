@@ -1,3 +1,5 @@
+'use strict';
+
 import { baseUUrl, token } from '../../config.js';
 import { getAllIssuesFromProject, parseDurationString, resolveProjectIds } from '../../utils.js';
 

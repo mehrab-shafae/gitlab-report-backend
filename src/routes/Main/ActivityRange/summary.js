@@ -1,3 +1,5 @@
+'use strict';
+
 import { weights } from './config.js';
 
 const H = 3600;

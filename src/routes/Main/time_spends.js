@@ -1,3 +1,5 @@
+'use strict';
+
 import { baseUUrl, token, perPage } from '../../config.js';
 import { getProjectDisplayNameFromLabel, getStatusDisplayNameFromLabel } from '../../utils.js';
 

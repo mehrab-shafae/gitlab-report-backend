@@ -67,7 +67,7 @@ export default async (req, res) => {
 			const end = new Date(toDate);
 			for (let d = new Date(start); d.getTime() <= end.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
 				const key = toKey(d);
-				out.push(key); // هر روز بازه
+				out.push(key);
 			}
 			return out;
 		};

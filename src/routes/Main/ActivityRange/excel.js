@@ -1,3 +1,5 @@
+'use strict';
+
 import ExcelJS from 'exceljs';
 import { weights } from './config.js';
 

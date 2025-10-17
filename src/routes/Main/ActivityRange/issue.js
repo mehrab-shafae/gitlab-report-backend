@@ -1,3 +1,5 @@
+'use strict';
+
 import { baseUUrl, token, perPage, projectId } from '../../../config.js';
 import { NOTES_CONCURRENCY } from './config.js';
 

@@ -1,3 +1,5 @@
+'use strict';
+
 import auth from '../middleware/auth.js';
 import milestones from './Main/milestones.js';
 import Users from './Main/Users.js';

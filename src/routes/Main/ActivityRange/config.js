@@ -1,3 +1,5 @@
+'use strict';
+
 //------------------------------------------------------
 const wRealness = Number(0.5);
 const wQuality = Number(0.3);

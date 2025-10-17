@@ -1,3 +1,5 @@
+'use strict';
+
 import { baseUUrl, token, projectId } from '../../../config.js';
 import { parseDurationString } from '../../../utils.js';
 import { attribution } from './config.js';

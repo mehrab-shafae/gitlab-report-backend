@@ -1,3 +1,5 @@
+'use strict';
+
 import { baseUUrl, token, projectId } from '../../config.js';
 
 export default async (req, res) => {
