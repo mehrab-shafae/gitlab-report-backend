@@ -81,9 +81,9 @@ export default async (req, res) => {
 
 
 		// spent
-		await SpentFunc(usersMap, issueChunks, userIdsSet, toKey, isInRange);
+		await SpentFunc(usersMap, issueChunks, userIdsSet, toKey, isInRange, userIds);
 		
-		/* misc i2 */ I2Func(allIssues, usersMap, isInRange, toKey);
+		/* misc i2 */ I2Func(allIssues, usersMap, isInRange, toKey, userIds);
 
 		// summary
 		SummaryFunc(req, usersMap, workingDateKeys);

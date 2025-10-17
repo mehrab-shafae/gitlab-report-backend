@@ -1,5 +1,5 @@
 
-export default function(allIssues, usersMap, isInRange, toKey) {
+export default function(allIssues, usersMap, isInRange, toKey, userIds) {
 for (const issue of allIssues) {
 			const updatedKey = issue.updated_at ? toKey(issue.updated_at) : null;
 			if (!updatedKey || !isInRange(updatedKey)) continue;

@@ -3,7 +3,7 @@ import { baseUUrl, token, projectId } from '../../../config.js';
 import { parseDurationString } from '../../../utils.js';
 import { attribution } from './config.js';
 
-export default async function(usersMap, issueChunks, userIdsSet, toKey, isInRange) {
+export default async function(usersMap, issueChunks, userIdsSet, toKey, isInRange, userIds) {
 for (const chunk of issueChunks) {
 			await Promise.allSettled(
 				chunk.map(async issue => {
