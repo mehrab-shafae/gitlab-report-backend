@@ -72,17 +72,15 @@ export default async (req, res) => {
 		};
 		const workingDateKeys = enumerateWorkingDates();
 
-
-   		let allIssues = [];
-    	const usersMap = {};
+		let allIssues = [];
+		const usersMap = {};
 
 		// issues
 		const issueChunks = await IssueFunc(allIssues);
 
-
 		// spent
 		await SpentFunc(usersMap, issueChunks, userIdsSet, toKey, isInRange, userIds);
-		
+
 		/* misc i2 */ I2Func(allIssues, usersMap, isInRange, toKey, userIds);
 
 		// summary
