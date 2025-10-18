@@ -4,6 +4,121 @@ import { baseUUrl, token, projectId } from '../../../config.js';
 import { parseDurationString } from '../../../utils.js';
 import { attribution } from './config.js';
 
+// Helper function to check if a user note contains GitLab commands that should be ignored
+function containsGitLabCommands(note) {
+	if (!note?.body) return false;
+	
+	const body = String(note.body).toLowerCase();
+	
+	// Check for GitLab slash commands
+	const slashCommands = [
+		'/spend', '/remove_time_spent', '/remove_estimate', '/remove_milestone',
+		'/estimate', '/time_estimate', '/milestone', '/label', '/assign',
+		'/unassign', '/close', '/reopen', '/todo', '/done'
+	];
+	
+	// Check if body contains any slash commands
+	for (const command of slashCommands) {
+		if (body.includes(command)) return true;
+	}
+	
+	// Check for time-related patterns that might be commands
+	const timePatterns = [
+		/\bspend\s+\d+[hdm]\b/i,
+		/\bremove\s+time\s+spent\b/i,
+		/\badd\s+\d+[hdm]\b/i,
+		/\bestimate\s+\d+[hdm]\b/i
+	];
+	
+	for (const pattern of timePatterns) {
+		if (pattern.test(body)) return true;
+	}
+	
+	return false;
+}
+
+// Helper function to check if a note is a valid system note for time tracking
+function isValidSystemNote(note) {
+	if (!note?.body || !note?.author?.id) return false;
+	
+	const body = String(note.body).toLowerCase();
+	
+	// Check if it's a system note by looking for system patterns
+	const isSystemPattern = 
+		body.includes('added') && (body.includes('time spent') || body.includes('spent time')) ||
+		body.includes('subtracted') && (body.includes('time spent') || body.includes('spent time')) ||
+		body.includes('removed') && (body.includes('time spent') || body.includes('spent time')) ||
+		body.includes('deleted') && (body.includes('time spent') || body.includes('spent time')) ||
+		body.includes('changed') && body.includes('time estimate') ||
+		body.includes('added') && body.includes('time estimate') ||
+		body.includes('removed') && body.includes('time estimate');
+	
+	// Additional check: system notes usually have specific patterns
+	const hasTimePattern = /\b\d+[hdm]\b|\b\d+\s*(hour|day|minute|week)s?\b/i.test(body);
+	
+	// Additional check: system notes usually don't contain user-specific content
+	const hasUserContent = 
+		body.includes('comment') || 
+		body.includes('note') || 
+		body.includes('update') ||
+		body.includes('status') ||
+		body.includes('progress') ||
+		body.length > 200; // System notes are usually short
+	
+	return isSystemPattern && hasTimePattern && !hasUserContent;
+}
+
+// Helper function to parse date from note body
+function parseDateFromBody(body, noteCreatedAt, toKey) {
+	const bodyLower = String(body).toLowerCase();
+	
+	// Handle "just now"
+	if (bodyLower.includes('just now')) {
+		return toKey(noteCreatedAt);
+	}
+	
+	// Handle "X time ago" patterns
+	const agoMatch = bodyLower.match(/(\d+)\s+(week|day|hour|minute)s?\s+ago/i);
+	if (agoMatch) {
+		const amount = parseInt(agoMatch[1]);
+		const unit = agoMatch[2].toLowerCase();
+		const date = new Date(noteCreatedAt);
+		
+		if (unit === 'week') {
+			date.setDate(date.getDate() - (amount * 7));
+		} else if (unit === 'day') {
+			date.setDate(date.getDate() - amount);
+		} else if (unit === 'hour') {
+			date.setHours(date.getHours() - amount);
+		} else if (unit === 'minute') {
+			date.setMinutes(date.getMinutes() - amount);
+		}
+		
+		return toKey(date);
+	}
+	
+	// Handle explicit dates (existing logic)
+	const mIso = bodyLower.match(/(?:\b(?:from|on|at)\s+)?(\d{4}-\d{2}-\d{2})\b/);
+	const mSlash = !mIso && bodyLower.match(/(?:\b(?:from|on|at)\s+)?(\d{4}\/\d{2}\/\d{2})\b/);
+	const mMon = !mIso && !mSlash && bodyLower.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),\s*(\d{4})\b/i);
+	
+	let normalized = null;
+	if (mIso) {
+		normalized = mIso[1];
+	} else if (mSlash) {
+		normalized = mSlash[1].replace(/\//g, '-');
+	} else if (mMon) {
+		const mon = mMon[1].toLowerCase();
+		const day = String(mMon[2]).padStart(2, '0');
+		const year = mMon[3];
+		const monMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', sept: '09', oct: '10', nov: '11', dec: '12' };
+		const mm = monMap[mon];
+		if (mm) normalized = `${year}-${mm}-${day}`;
+	}
+	
+	return normalized || toKey(noteCreatedAt);
+}
+
 export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRange, userIds) {
 	for (const chunk of issueChunks) {
 		await Promise.allSettled(
@@ -48,30 +163,19 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 					// ========================================================================================
 					for (const note of notes) {
 						if (!note?.body || !note?.created_at || !note?.author?.id) continue;
+						
+						// Only process valid system notes for time tracking
+						if (!isValidSystemNote(note)) {
+							// Log skipped notes for debugging
+							// console.log(`Skipped system note: ${note.body?.substring(0, 100)}...`);
+							continue;
+						}
+						
 						const authorId = Number(note.author.id);
-						let noteKey = toKey(note.created_at);
-						let targetKey = noteKey;
-						const body = String(note.body).toLowerCase();
-
-						const mIso = body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}-\d{2}-\d{2})\b/);
-						const mSlash = !mIso && body.match(/(?:\b(?:from|on|at)\s+)?(\d{4}\/\d{2}\/\d{2})\b/);
-						const mMon = !mIso && !mSlash && body.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),\s*(\d{4})\b/i);
-						let normalized = null;
-						if (mIso) {
-							normalized = mIso[1];
-						} else if (mSlash) {
-							normalized = mSlash[1].replace(/\//g, '-');
-						} else if (mMon) {
-							const mon = mMon[1].toLowerCase();
-							const day = String(mMon[2]).padStart(2, '0');
-							const year = mMon[3];
-							const monMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', sept: '09', oct: '10', nov: '11', dec: '12' };
-							const mm = monMap[mon];
-							if (mm) normalized = `${year}-${mm}-${day}`;
-						}
-						if (normalized) {
-							targetKey = normalized;
-						}
+						const body = String(note.body);
+						
+						// Use improved date parsing
+						const targetKey = parseDateFromBody(body, note.created_at, toKey);
 						if (!isInRange(targetKey)) continue;
 
 						if (/\bremoved\s+(?:all\s+)?(?:time\s+spent|spent\s+time)\b/i.test(body)) {
@@ -83,18 +187,23 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 								if (!uRec) continue;
 								const issRec = uRec.issues && uRec.issues[issue.iid];
 								if (!issRec) continue;
+								
+								// Remove all time spent for this issue
 								const currentTotal = Number(issRec.spentInRange) || 0;
-								if (currentTotal === 0) continue;
-								// subtract per-day amounts tracked on the issue
-								const perDay = issRec.byDate || {};
-								for (const [dkey, val] of Object.entries(perDay)) {
-									if (typeof val === 'number' && val !== 0) {
-										uRec.byDate[dkey] = (uRec.byDate[dkey] || 0) - val;
+								if (currentTotal > 0) {
+									// Subtract per-day amounts tracked on the issue
+									const perDay = issRec.byDate || {};
+									for (const [dkey, val] of Object.entries(perDay)) {
+										if (typeof val === 'number' && val !== 0) {
+											uRec.byDate[dkey] = (uRec.byDate[dkey] || 0) - val;
+										}
 									}
+									
+									// Reset issue totals
+									uRec.totalSpent -= currentTotal;
+									issRec.spentInRange = 0;
+									issRec.byDate = {};
 								}
-								uRec.totalSpent -= currentTotal;
-								issRec.spentInRange = 0;
-								issRec.byDate = {};
 							}
 							continue;
 						}
@@ -180,7 +289,9 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 							continue;
 						}
 
-						if (!isInRange(noteKey)) continue;
+						// Use improved date parsing for add/subtract operations
+						const targetDate = parseDateFromBody(body, note.created_at, toKey);
+						if (!isInRange(targetDate)) continue;
 
 						const isAdd = body.includes('added') && (body.includes('time spent') || body.includes('spent time'));
 						const isSub = (body.includes('subtracted') || body.includes('removed') || body.includes('deleted')) && (body.includes('time spent') || body.includes('spent time'));
@@ -253,20 +364,24 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 							}
 							let appliedDelta = shareSeconds;
 							if (isSub) {
-								const currentIssueDay = Number(usersMap[uidShare].issues[issue.iid].byDate[noteKey] || 0);
+								const currentIssueDay = Number(usersMap[uidShare].issues[issue.iid].byDate[targetDate] || 0);
 								const appliedAbs = Math.min(currentIssueDay, Math.abs(shareSeconds));
 								if (appliedAbs <= 0) continue;
 								appliedDelta = -appliedAbs;
 							}
+							
+							// Apply time changes to the correct date
 							usersMap[uidShare].totalSpent += appliedDelta;
 							usersMap[uidShare].issues[issue.iid].spentInRange = Math.max(0, (usersMap[uidShare].issues[issue.iid].spentInRange || 0) + appliedDelta);
-							usersMap[uidShare].byDate[noteKey] = Math.max(0, (usersMap[uidShare].byDate[noteKey] || 0) + appliedDelta);
-							usersMap[uidShare].issues[issue.iid].byDate[noteKey] = Math.max(0, (usersMap[uidShare].issues[issue.iid].byDate[noteKey] || 0) + appliedDelta);
+							usersMap[uidShare].byDate[targetDate] = Math.max(0, (usersMap[uidShare].byDate[targetDate] || 0) + appliedDelta);
+							usersMap[uidShare].issues[issue.iid].byDate[targetDate] = Math.max(0, (usersMap[uidShare].issues[issue.iid].byDate[targetDate] || 0) + appliedDelta);
+							
+							// Track large one-off spends
 							if (isAdd && Math.abs(appliedDelta) >= 8 * 3600) {
 								usersMap[uidShare].issues[issue.iid].quality.largeOneOffSpends.push({
 									at: note.created_at,
 									seconds: appliedDelta,
-									dateKey: noteKey,
+									dateKey: targetDate,
 								});
 							}
 
@@ -440,10 +555,20 @@ export default async function (usersMap, issueChunks, userIdsSet, toKey, isInRan
 					for (const note of notes) {
 						if (note?.system) continue;
 						if (!note?.created_at || !note?.author?.id) continue;
-						const noteKey = toKey(note.created_at);
-						if (!isInRange(noteKey)) continue;
 						const authorId = Number(note.author.id);
 						if (!userIds.includes(authorId)) continue;
+						
+						// Skip notes that contain GitLab commands (these are handled by system notes)
+						if (containsGitLabCommands(note)) {
+							// Log skipped notes for debugging
+							// console.log(`Skipped user note with GitLab commands: ${note.body?.substring(0, 100)}...`);
+							continue;
+						}
+						
+						// Use improved date parsing for user notes
+						const noteKey = parseDateFromBody(note.body, note.created_at, toKey);
+						if (!isInRange(noteKey)) continue;
+						
 						const isAssignee = recipients.some(p => p && Number(p.id) === authorId);
 						if (!isAssignee) {
 							if (!usersMap[authorId]) {
