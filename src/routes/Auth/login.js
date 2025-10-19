@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '../../config.js';
+import { adminUser, JWT_SECRET } from '../../config.js';
 import { User } from '../../model/user.js';
 import { register } from './register.js';
 
@@ -10,7 +10,7 @@ export default async (req, res) => {
 			return res.status(400).json({ message: 'username و password الزامی هستند' });
 		}
 
-		const reg = await register();
+		const reg = await register(username, password);
 		if(!reg){
 			return res.status(500).json({
 				status: 'error',

@@ -10,10 +10,13 @@ export async function register(username, password) {
 	try {
 		if (!username || !password) return false;
 
-		const matched = USERS_GIT.find(u => String(u?.username).toLowerCase() === String(claims.username).toLowerCase());
+		if (username !== adminUser){
+		const matched = USERS_GIT.find(u => String(u?.username).toLowerCase() === String(username).toLowerCase());
+
 			if (!matched) {
 				return false;
 			}
+		}
 
 		const exists = await User.exists({ username });
 		if (exists) {
