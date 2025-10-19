@@ -1,3 +1,5 @@
+import { fetchGitlabUsers } from './utils.js';
+
 export const ALL_PROJECT_IDS = [];
 // export const projectNameCache = {};
 
@@ -10,6 +12,12 @@ export const perPage = 100; //, 50, 100
 export const adminUser = process.env.adminUser || 'master';
 export const JWT_SECRET = process.env.JWT_SECRET || 'fdffdsasd4343';
 export const DEV_MODE = process.env.DEV_MODE === 'true';
+
+export let USERS_GIT;
+
+(async()=>{
+	USERS_GIT = await fetchGitlabUsers();
+})();
 
 if (DEV_MODE) {
 	console.log('🔧 Development mode is ENABLED - Token validation bypassed');

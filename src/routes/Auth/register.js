@@ -1,33 +1,34 @@
-import mongoose from 'mongoose';
-import { userSchema } from '../../modelSchema.js';
+import { adminUser, USERS_GIT } from '../../config.js';
+import { User } from '../../model/user.js';
 
-const User = mongoose.models.User || mongoose.model('User', userSchema);
+			// const matched = users.find(u => String(u?.username).toLowerCase() === String(claims.username).toLowerCase());
+			// if (!matched) {
+			// 	return res.status(403).json({ message: 'یوزر اشتباه است یا در GitLab یافت نشد' });
+			// }
 
-export default async (req, res) => {
+export async function register(username, password) {
 	try {
-		const { username, password } = req.body || {};
-		if (!username || !password) {
-			return res.status(400).json({ message: 'username و password الزامی هستند' });
-		}
+		if (!username || !password) return false;
+
+		const matched = USERS_GIT.find(u => String(u?.username).toLowerCase() === String(claims.username).toLowerCase());
+			if (!matched) {
+				return false;
+			}
 
 		const exists = await User.exists({ username });
 		if (exists) {
-			return res.status(409).json({ message: 'این نام کاربری قبلاً ثبت شده است' });
+			return true;
 		}
-
-		let created;
 
 		if (username === adminUser) {
-			created = await User.create({ username, password, isAdmin: true });
+			await User.create({ username, password, isAdmin: true });
 		} else {
-			created = await User.create({ username, password });
+			await User.create({ username, password });
 		}
 
-		return res.status(201).json({ status: 'ok', id: created._id });
+		return true;
 	} catch (error) {
-		return res.status(500).json({
-			message: 'خطا در ثبت کاربر',
-			error: error?.message || String(error),
-		});
+		console.log('[register] error:', error);
+		return false;
 	}
 };
