@@ -15,7 +15,7 @@ if (DEV_MODE) {
 	console.log('🔧 Development mode is ENABLED - Token validation bypassed');
 }
 
-export const originsC = [`http://localhost:${port}`, process.env.originsCors];
+export const originsC = ['http://localhost:3000', process.env.originsCors];
 
 if (!baseUUrl || !token) {
 	throw new Error('GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است');
