@@ -11,7 +11,7 @@ export default async (req, res) => {
 		}
 
 		const reg = await register(username, password);
-		if(!reg){
+		if (!reg) {
 			return res.status(500).json({
 				status: 'error',
 				message: 'نام کاربری یا رمز عبور اشتباه است',
