@@ -13,7 +13,7 @@ const dbName = process.env.MONGODB_DB || 'forvest_git';
 	try {
 		await mongoose.connect(mongoUri, {
 			dbName,
-			authSource: 'admin',
+			authSource: 'admin', // TODO("Static?")
 			socketTimeoutMS: 60000,
 			serverSelectionTimeoutMS: 60000,
 			minPoolSize: 5,
