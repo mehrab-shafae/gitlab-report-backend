@@ -12,23 +12,23 @@ import daily from './Main/daily.js';
 import activity_range from './Main/activity_range.js';
 
 export default function (app) {
-      app.use(asyncHandler(auth));
+  app.use(asyncHandler(auth));
 
-      app.get('/milestones', asyncHandler(milestones));
+  app.get('/milestones', asyncHandler(milestones));
 
-      app.get('/Users', asyncHandler(Users));
+  app.get('/Users', asyncHandler(Users));
 
-      app.get('/labels', asyncHandler(labels));
+  app.get('/labels', asyncHandler(labels));
 
-      app.get('/time-spends', asyncHandler(time_spents));
+  app.get('/time-spends', asyncHandler(time_spents));
 
-      app.get('/milestone-daily-spends', asyncHandler(milestone_daily_spends));
+  app.get('/milestone-daily-spends', asyncHandler(milestone_daily_spends));
 
-      app.get('/labels-report', asyncHandler(labels_report));
+  app.get('/labels-report', asyncHandler(labels_report));
 
-      app.get('/daily-report', asyncHandler(daily_report));
+  app.get('/daily-report', asyncHandler(daily_report));
 
-      app.get('/daily', asyncHandler(daily));
+  app.get('/daily', asyncHandler(daily));
 
-      app.get('/activity-range', asyncHandler(activity_range));
+  app.get('/activity-range', asyncHandler(activity_range));
 }
