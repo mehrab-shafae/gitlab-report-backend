@@ -1,6 +1,6 @@
 'use strict';
 
-import excel from './ActivityRange/excel.js';
+// import excel from './ActivityRange/excel.js';
 import I2Func from './ActivityRange/i2.js';
 import IssueFunc from './ActivityRange/issue.js';
 import SpentFunc from './ActivityRange/spent.js';
