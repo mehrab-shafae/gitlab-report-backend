@@ -119,7 +119,7 @@ export default async (req, res) => {
     }));
 
     // ========================================================================================
-    await excel(results, users, startKey, endKey);
+    // await excel(results, users, startKey, endKey);
 
     res.json(results);
   } catch (error) {
