@@ -1,61 +1,39 @@
 
-# Configuration
+# راهنمای پیکربندی
+این سند محل و معنی تنظیمات اصلی سرویس را توضیح می‌دهد.
 
-## فایل‌های env
-این ریپو چند env نمونه دارد:
-- `.env.local` (برای لوکال)
-- `.env.test` (برای محیط تست)
-- `.env.prod` (برای پرود)
+## متغیرهای محیطی
+مقادیر در `.env` (یا متغیرهای محیطی CI/CD) تعریف می‌شوند. حداقل متغیرهای لازم:
 
+| متغیر | توضیح | مقدار نمونه |
+| --- | --- | --- |
+| `PORT` | پورت اجرای API | `9005` |
+| `GITLAB_BASE_URL` | آدرس پایه GitLab | `https://gitlab.com/api/v4` |
+| `GITLAB_TOKEN` | توکن دسترسی خصوصی GitLab | `glpat-...` |
+| `GITLAB_PROJECT_ID` | شناسه پیش‌فرض پروژه برای گزارش‌گیری | `12345` |
+| `GITLAB_GROUP_ID` | در صورت استفاده از `projectId=all` برای دریافت لیست پروژه‌ها | `6789` |
+| `originsCors` | مبدأ مجاز CORS (لیست جداشده با کاما) | `https://app.example.com` |
+| `MONGODB_URI` | اتصال MongoDB | `mongodb://user:pass@host:27017` |
+| `MONGODB_DB` | نام دیتابیس | `forvest_git` |
+| `JWT_SECRET` | کلید امضای JWT | `strong-secret` |
+| `adminUser` | نام کاربری ادمین که دسترسی کامل دارد | `master` |
+| `DEV_MODE` | اگر `true` باشد auth دور زده می‌شود (فقط توسعه) | `false` |
 
-نکته: در Next.js معمولاً `.env.production` شناخته‌شده‌تر از `.env.prod` است. اگر در CI/Deployment از مکانیزم استاندارد Next استفاده می‌کنید، بهتر است نام‌گذاری envها با استاندارد Next هم‌راستا باشد.
+> برای GitLab: از مستندات رسمی استفاده کنید تا سطح دسترسی توکن درست تنظیم شود ([GitLab REST API](https://docs.gitlab.com/ee/api/)).
 
-## متغیرهای محیطی (ENV Vars)
-### 1) NEXT_PUBLIC_BACKEND_API (ضروری)
-Base URL بک‌اند:
-- نمونه prod: `https://api.estateir.com/api/v1`
-- نمونه test: `https://api.akbari.devrc.ir/api/v1`
+### مدیریت فایل‌های env
+1. فایل `.env` را در مخازن خصوصی یا Secret Manager نگه دارید؛ در مخزن کد قرار ندهید.
+2. مقدار `GITLAB_TOKEN` را فقط روی محیط‌های امن (CI/Production) تزریق کنید.
+3. بعد از تغییر env سرور را ری‌استارت کنید تا مقادیر جدید اعمال شوند.
 
-اثر مستقیم:
-- سرویس‌های fetch/auth/call-request و دانلود تصاویر از همین استفاده می‌کنند.
+## فایل‌ها و تنظیمات کلیدی
+| مسیر | توضیح | نکات |
+| --- | --- | --- |
+| `src/config.js` | خواندن env و CORS/پارامترهای GitLab | اگر متغیر ضروری ست نباشد، اپلیکیشن boot نمی‌شود. |
+| `src/init.js` | اتصال MongoDB و هندل Shutdown | مقادیر `MONGODB_URI`/`MONGODB_DB` را اینجا تغذیه کنید. |
+| `Dockerfile` | بیلد ایمیج بر پایه Node 22 | برای تغییر پورت، متغیر `PORT` را در زمان اجرا ست کنید. |
 
-### 2) NEXT_PUBLIC_DEBUG (پیشنهادی)
-- اگر  `"True"` باشد، روی برخی صفحات `robots: noindex` فعال می‌شود.
-- برای production باید `"False"` باشد تا صفحات ایندکس شوند.
-
-### 3) NEXT_PUBLIC_IS_TEST (وابسته به منو/داشبورد)
-در `LayoutPublic` برای تعیین لینک داشبورد:
-- `"TRUE"` → `dashboard.akbari.devrc.ir`
-- `"False"` → `dashboard.estateir.com`
-
-
-## i18n و فایل‌های محتوا
-ترجمه‌ی صفحات عمومی از JSONهای `public/i18n/` می‌آید:
-- home/about/contact/call-request/layout
-
-الگو:
-- `public/i18n/<page>/{locale}.json`
-- locale های اصلی: `fa`, `en`, `ar`
-
-## SEO Config
-در برخی صفحات، مقدار `BASE = "https://estateir.com"` هاردکد شده و برای:
-- canonical
-- openGraph
-- logo URL
-استفاده می‌شود.
-
-اگر staging دامنه‌ی متفاوت دارد، پیشنهاد:
-- یا یک env جداگانه مثل `NEXT_PUBLIC_SITE_BASE_URL` تعریف و در کد جایگزین شود
-- یا در فرایند build برای هر محیط مقدار BASE را مدیریت کنید.
-
-## Configuration فایل‌ها / جایگاه‌ها
-- Routing و locale: `src/middleware.js`
-- Layout عمومی: `src/app/layout.js`
-- Layout صفحات عمومی چندزبانه: `src/app/(public)/[locale]/layout.js`
-- سرویس‌ها و API clients: `src/services/`
-
-## چک‌لیست سریع قبل از build
-- [ ] `NEXT_PUBLIC_BACKEND_API` درست است
-- [ ] `NEXT_PUBLIC_DEBUG` برای prod = False
-- [ ] فایل‌های ترجمه‌ی `public/i18n/...` کامل هستند
-- [ ] (در صورت نیاز) `NEXT_PUBLIC_IS_TEST` درست تنظیم شده است
+## چک‌لیست تغییر پیکربندی
+1. مقدار جدید را در env تنظیم کنید و در جدول بالا مستند نمایید.
+2. در صورت افزودن وابستگی تازه (مثلاً نقش جدید GitLab)، کد `config.js`/`auth.js` را هم‌تراز کنید.
+3. پس از اعمال تغییر، سرویس را ری‌استارت و یک تماس آزمایشی به `/milestones` انجام دهید.
