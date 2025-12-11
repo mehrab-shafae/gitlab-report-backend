@@ -5,540 +5,540 @@ import { weights } from './config.js';
 const H = 3600;
 
 const reasonMap = {
-  missing_title: 'عنوان وارد نشده است.',
-  missing_description: 'توضیحات وارد نشده است.',
-  spent_equals_estimate: 'spent دقیقاً برابر estimate است (غیرواقعی به نظر می‌رسد).',
-  no_spent: 'هیچ spent ثبت نشده است.',
-  no_estimate: 'هیچ برآورد زمانی ثبت نشده است.',
-  few_labels: 'تعداد لیبل کمتر از حداقل است.',
-  missing_status_label: 'لیبل وضعیت ثبت نشده است.',
-  many_description_edits: 'توضیحات ایشو بیش از حد ویرایش شده است.',
-  large_one_off_spend: 'یک spend بزرگ یکجا ثبت شده است.',
+    missing_title: 'عنوان وارد نشده است.',
+    missing_description: 'توضیحات وارد نشده است.',
+    spent_equals_estimate: 'spent دقیقاً برابر estimate است (غیرواقعی به نظر می‌رسد).',
+    no_spent: 'هیچ spent ثبت نشده است.',
+    no_estimate: 'هیچ برآورد زمانی ثبت نشده است.',
+    few_labels: 'تعداد لیبل کمتر از حداقل است.',
+    missing_status_label: 'لیبل وضعیت ثبت نشده است.',
+    many_description_edits: 'توضیحات ایشو بیش از حد ویرایش شده است.',
+    large_one_off_spend: 'یک spend بزرگ یکجا ثبت شده است.',
 };
 
 export default function (req, usersMap, workingDateKeys) {
-  for (const u of Object.values(usersMap)) {
-    let totalIssueCount = 0;
-    // let realnessSum = 0;
-    let suspiciousIssueCount = 0;
-
     for (const u of Object.values(usersMap)) {
-      if (!u.byDate) u.byDate = {};
-      if (!u.issues) u.issues = {};
-    }
+        let totalIssueCount = 0;
+        // let realnessSum = 0;
+        let suspiciousIssueCount = 0;
 
-    const daily = workingDateKeys.map(k => {
-      const issueList = Object.values(u.issues || {});
-      const issuesArr = issueList.map(iss => ({ iid: iss.iid, spent: (iss.byDate && iss.byDate[k]) || 0 })).filter(x => x.spent !== 0);
+        for (const u of Object.values(usersMap)) {
+            if (!u.byDate) u.byDate = {};
+            if (!u.issues) u.issues = {};
+        }
 
-      const totalForDay = issueList.reduce((sum, iss) => {
-        return sum + (iss.byDate && iss.byDate[k] ? Number(iss.byDate[k]) : 0);
-      }, 0);
+        const daily = workingDateKeys.map(k => {
+            const issueList = Object.values(u.issues || {});
+            const issuesArr = issueList.map(iss => ({ iid: iss.iid, spent: (iss.byDate && iss.byDate[k]) || 0 })).filter(x => x.spent !== 0);
 
-      return {
-        date: k,
-        spent: totalForDay,
-        issues: issuesArr,
-        issueIids: issuesArr.map(it => it.iid),
-      };
-    });
+            const totalForDay = issueList.reduce((sum, iss) => {
+                return sum + (iss.byDate && iss.byDate[k] ? Number(iss.byDate[k]) : 0);
+            }, 0);
 
-    // ========================================================================================
-    const qBaseSec = Number(req.query.base_seconds ?? process.env.BASE_DAY_SECONDS ?? 30000);
-    const baseDaySeconds = Number.isFinite(qBaseSec) ? qBaseSec : 30000; // 8h20m
-    const qMinPercent = Number(req.query.min_percent ?? process.env.MIN_PERCENT ?? 0.3);
-    const qNormalHighPercent = Number(req.query.normal_high_percent ?? process.env.NORMAL_HIGH_PERCENT ?? 0.7);
-    const qPositiveLowPercent = Number(req.query.positive_low_percent ?? process.env.POSITIVE_LOW_PERCENT ?? 0.6);
-    const qPositiveHighPercent = Number(req.query.positive_high_percent ?? process.env.POSITIVE_HIGH_PERCENT ?? 0.9);
-    const qMaxCapHours = Number(req.query.max_cap_hours ?? process.env.MAX_CAP_HOURS ?? 10);
-    const targetMin = (Number.isFinite(qMinPercent) ? qMinPercent : 0.3) * baseDaySeconds; // 30%
-    const targetMax = (Number.isFinite(qNormalHighPercent) ? qNormalHighPercent : 0.7) * baseDaySeconds; // 70%
-    const positiveLow = (Number.isFinite(qPositiveLowPercent) ? qPositiveLowPercent : 0.6) * baseDaySeconds; // 60%
-    const overworkSoft = (Number.isFinite(qPositiveHighPercent) ? qPositiveHighPercent : 0.9) * baseDaySeconds; // 90%
-    const maxCapSeconds = (Number.isFinite(qMaxCapHours) ? qMaxCapHours : 10) * H; // up to 10h is okay (excellent, no points)
-    const qFakeSpendH = Number(req.query.fake_spend_hours ?? process.env.FAKE_SPEND_HOURS ?? 5);
-    const fakeSpendThreshold = (Number.isFinite(qFakeSpendH) ? qFakeSpendH : 5) * H; // one-off spend anomaly threshold
-    let daysBelowMin = 0;
-    let daysAboveMax = 0;
-    let daysFake = 0;
-    let daysPositive = 0; // 60%..90% of base
-    let daysOver90NoPoint = 0; // >90%..<=10h
-    let healthyDays = 0;
-    let totalDays = daily.length;
-    let activeDays = 0;
-    let totalSpent = 0;
-    let totalEstimate = 0;
-    let fakeDaysDetails = [];
-    // ========================================================================================
+            return {
+                date: k,
+                spent: totalForDay,
+                issues: issuesArr,
+                issueIids: issuesArr.map(it => it.iid),
+            };
+        });
 
-    for (const d of daily) {
-      totalSpent += d.spent;
-      if (d.spent > 0) {
-        activeDays += 1;
-        if (d.spent < targetMin) {
-          daysBelowMin += 1;
-        } else if (d.spent >= targetMin && d.spent <= targetMax) {
-          healthyDays += 1;
-        }
-        if (d.spent >= positiveLow && d.spent <= overworkSoft) {
-          daysPositive += 1; // positive band 60%..90%
-        }
-        if (d.spent > targetMax && d.spent <= overworkSoft) {
-          daysAboveMax += 1; // 70%..90%
-        } else if (d.spent > overworkSoft && d.spent <= maxCapSeconds) {
-          daysOver90NoPoint += 1; // >90%..<=10h (excellent, no points)
-        } else if (d.spent > maxCapSeconds) {
-          daysFake += 1; // >10h
-          fakeDaysDetails.push({ date: d.date, spent: d.spent });
-        }
-      }
-    }
-    // ========================================================================================
-    for (const iss of Object.values(u.issues)) {
-      const v = Number(iss?.estimateInRange) || 0;
-      totalEstimate += v;
-    }
-    // ========================================================================================
-    let largeOneOffSpendsCount = 0;
-    for (const iss of Object.values(u.issues)) {
-      const q = iss.quality || {};
-      if (Array.isArray(q.largeOneOffSpends)) {
-        for (const s of q.largeOneOffSpends) {
-          if (s.seconds >= fakeSpendThreshold) {
-            largeOneOffSpendsCount++;
-            fakeDaysDetails.push({ date: s.at, spent: s.seconds, type: 'largeOneOff' });
-          }
-        }
-      }
-    }
+        // ========================================================================================
+        const qBaseSec = Number(req.query.base_seconds ?? process.env.BASE_DAY_SECONDS ?? 30000);
+        const baseDaySeconds = Number.isFinite(qBaseSec) ? qBaseSec : 30000; // 8h20m
+        const qMinPercent = Number(req.query.min_percent ?? process.env.MIN_PERCENT ?? 0.3);
+        const qNormalHighPercent = Number(req.query.normal_high_percent ?? process.env.NORMAL_HIGH_PERCENT ?? 0.7);
+        const qPositiveLowPercent = Number(req.query.positive_low_percent ?? process.env.POSITIVE_LOW_PERCENT ?? 0.6);
+        const qPositiveHighPercent = Number(req.query.positive_high_percent ?? process.env.POSITIVE_HIGH_PERCENT ?? 0.9);
+        const qMaxCapHours = Number(req.query.max_cap_hours ?? process.env.MAX_CAP_HOURS ?? 10);
+        const targetMin = (Number.isFinite(qMinPercent) ? qMinPercent : 0.3) * baseDaySeconds; // 30%
+        const targetMax = (Number.isFinite(qNormalHighPercent) ? qNormalHighPercent : 0.7) * baseDaySeconds; // 70%
+        const positiveLow = (Number.isFinite(qPositiveLowPercent) ? qPositiveLowPercent : 0.6) * baseDaySeconds; // 60%
+        const overworkSoft = (Number.isFinite(qPositiveHighPercent) ? qPositiveHighPercent : 0.9) * baseDaySeconds; // 90%
+        const maxCapSeconds = (Number.isFinite(qMaxCapHours) ? qMaxCapHours : 10) * H; // up to 10h is okay (excellent, no points)
+        const qFakeSpendH = Number(req.query.fake_spend_hours ?? process.env.FAKE_SPEND_HOURS ?? 5);
+        const fakeSpendThreshold = (Number.isFinite(qFakeSpendH) ? qFakeSpendH : 5) * H; // one-off spend anomaly threshold
+        let daysBelowMin = 0;
+        let daysAboveMax = 0;
+        let daysFake = 0;
+        let daysPositive = 0; // 60%..90% of base
+        let daysOver90NoPoint = 0; // >90%..<=10h
+        let healthyDays = 0;
+        let totalDays = daily.length;
+        let activeDays = 0;
+        let totalSpent = 0;
+        let totalEstimate = 0;
+        let fakeDaysDetails = [];
+        // ========================================================================================
 
-    let suspiciousIncrementCount = 0;
-    if (Array.isArray(u.spendAddLog) && u.spendAddLog.length > 1) {
-      const ordered = [...u.spendAddLog].sort((a, b) => new Date(a.at) - new Date(b.at));
-      for (let i = 1; i < ordered.length; i++) {
-        const prev = ordered[i - 1];
-        const curr = ordered[i];
-        if (prev && curr && prev.seconds > 0 && curr.seconds > 0) {
-          const ratio = curr.seconds / prev.seconds;
-          if (ratio >= 1.9 && ratio <= 2.1 && prev.seconds >= 50 * 60 && prev.seconds <= 70 * 60) {
-            suspiciousIncrementCount += 1;
-          }
+        for (const d of daily) {
+            totalSpent += d.spent;
+            if (d.spent > 0) {
+                activeDays += 1;
+                if (d.spent < targetMin) {
+                    daysBelowMin += 1;
+                } else if (d.spent >= targetMin && d.spent <= targetMax) {
+                    healthyDays += 1;
+                }
+                if (d.spent >= positiveLow && d.spent <= overworkSoft) {
+                    daysPositive += 1; // positive band 60%..90%
+                }
+                if (d.spent > targetMax && d.spent <= overworkSoft) {
+                    daysAboveMax += 1; // 70%..90%
+                } else if (d.spent > overworkSoft && d.spent <= maxCapSeconds) {
+                    daysOver90NoPoint += 1; // >90%..<=10h (excellent, no points)
+                } else if (d.spent > maxCapSeconds) {
+                    daysFake += 1; // >10h
+                    fakeDaysDetails.push({ date: d.date, spent: d.spent });
+                }
+            }
         }
-      }
-    }
-    // ========================================================================================
-    let realnessScore = 1.0;
-    if (daysBelowMin > 0) realnessScore -= Math.min(0.2, 0.03 * daysBelowMin);
-    if (daysPositive > 0) realnessScore += Math.min(0.12, 0.012 * daysPositive);
-    if (daysFake > 0) realnessScore -= Math.min(0.5, 0.15 * daysFake);
-    const daysExtremeFake = daily.filter(d => d.spent > 12 * H).length;
-    if (daysExtremeFake > 0) realnessScore -= Math.min(0.6, 0.25 * daysExtremeFake);
-    if (largeOneOffSpendsCount > 0) realnessScore -= Math.min(0.4, 0.1 * largeOneOffSpendsCount);
-    if (suspiciousIncrementCount > 0) realnessScore -= Math.min(0.05, 0.01 * suspiciousIncrementCount);
-    realnessScore = Math.max(0, Math.min(1, realnessScore));
-    // ========================================================================================
-    for (const iss of Object.values(u.issues)) {
-      const q = iss.quality || {};
-      const reasons = [];
-      if (q.hasTitle === false) reasons.push('missing_title');
-      if (q.hasDescription === false) reasons.push('missing_description');
-      if (q.spentEqualsEstimate === true) reasons.push('spent_equals_estimate');
-      if (q.spentIsZero === true) reasons.push('no_spent');
-      if (q.estimateIsZero === true) reasons.push('no_estimate');
-      if ((q.labelsCount || 0) <= 3) reasons.push('few_labels');
-      if (q.hasStatusLabel === false) reasons.push('missing_status_label');
-      if ((q.descriptionEditsInRange || 0) >= 3) reasons.push('many_description_edits');
-      const hasBigOneOff = Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0;
-      if (hasBigOneOff) reasons.push('large_one_off_spend');
-      iss.suspiciousReasons = reasons;
-      totalIssueCount += 1;
-      if (reasons.length > 0) suspiciousIssueCount += 1;
-    }
-    // ========================================================================================
-    u.totalIssueCount = totalIssueCount;
-    u.suspiciousIssueCount = suspiciousIssueCount;
-    u.realnessPercent = Number((realnessScore * 100).toFixed(2));
-    u.daysBelowMin = daysBelowMin;
-    u.daysAboveMax = daysAboveMax;
-    u.daysFake = daysFake;
-    u.healthyDays = healthyDays;
-    u.totalDays = totalDays;
-    u.activeDays = activeDays;
-    u.fakeDaysDetails = fakeDaysDetails;
-    u.largeOneOffSpendsCount = largeOneOffSpendsCount;
-    u.daysPositive = daysPositive; // 60%..90%
-    u.daysOver90NoPoint = daysOver90NoPoint; // >90%..<=10h
-    u.totalSpent = totalSpent;
-    // ========================================================================================
-    let estimateDaily = workingDateKeys.map(k => {
-      const issuesArr = [];
-      let estSum = 0;
-      for (const iss of Object.values(u.issues || {})) {
-        const v = (iss.estimateByDate && iss.estimateByDate[k]) || 0;
-        if (v > 0) {
-          issuesArr.push({ iid: iss.iid, seconds: v, hm: `${Math.floor(v / 3600)}h ${Math.floor((v % 3600) / 60)}m` });
-          estSum += v;
+        // ========================================================================================
+        for (const iss of Object.values(u.issues)) {
+            const v = Number(iss?.estimateInRange) || 0;
+            totalEstimate += v;
         }
-      }
-      const issueIids = issuesArr.map(it => it.iid);
-      return {
-        date: k,
-        estimate: estSum,
-        estimate_hm: `${Math.floor(estSum / 3600)}h ${Math.floor((estSum % 3600) / 60)}m`,
-        issues: issuesArr,
-        issueIids,
-      };
-    });
+        // ========================================================================================
+        let largeOneOffSpendsCount = 0;
+        for (const iss of Object.values(u.issues)) {
+            const q = iss.quality || {};
+            if (Array.isArray(q.largeOneOffSpends)) {
+                for (const s of q.largeOneOffSpends) {
+                    if (s.seconds >= fakeSpendThreshold) {
+                        largeOneOffSpendsCount++;
+                        fakeDaysDetails.push({ date: s.at, spent: s.seconds, type: 'largeOneOff' });
+                    }
+                }
+            }
+        }
 
-    const totalDailyEst = estimateDaily.reduce((s, d) => s + (d.estimate || 0), 0);
-    if (totalDailyEst === 0 && workingDateKeys.length > 0) {
-      const firstDay = workingDateKeys[0];
-      for (const iss of Object.values(u.issues || {})) {
-        const currentEstimate = Number(iss?.time_stats?.time_estimate || 0);
-        if (!currentEstimate || currentEstimate <= 0) continue;
-        const perDay = iss.byDate || {};
-        const activeDay =
-          Object.keys(perDay)
-            .filter(k => workingDateKeys.includes(k) && Number(perDay[k] || 0) > 0)
-            .sort()[0] || firstDay;
-        const dayObj = estimateDaily.find(d => d.date === activeDay);
-        if (dayObj) {
-          dayObj.estimate += currentEstimate;
-          dayObj.estimate_hm = `${Math.floor(dayObj.estimate / 3600)}h ${Math.floor((dayObj.estimate % 3600) / 60)}m`;
-          dayObj.issues.push({ iid: iss.iid, seconds: currentEstimate, hm: `${Math.floor(currentEstimate / 3600)}h ${Math.floor((currentEstimate % 3600) / 60)}m` });
-          dayObj.issueIids = Array.from(new Set([...(dayObj.issueIids || []), iss.iid]));
+        let suspiciousIncrementCount = 0;
+        if (Array.isArray(u.spendAddLog) && u.spendAddLog.length > 1) {
+            const ordered = [...u.spendAddLog].sort((a, b) => new Date(a.at) - new Date(b.at));
+            for (let i = 1; i < ordered.length; i++) {
+                const prev = ordered[i - 1];
+                const curr = ordered[i];
+                if (prev && curr && prev.seconds > 0 && curr.seconds > 0) {
+                    const ratio = curr.seconds / prev.seconds;
+                    if (ratio >= 1.9 && ratio <= 2.1 && prev.seconds >= 50 * 60 && prev.seconds <= 70 * 60) {
+                        suspiciousIncrementCount += 1;
+                    }
+                }
+            }
         }
-      }
-    }
-    // ========================================================================================
-    const totalEstimateFinal = estimateDaily.reduce((s, d) => s + (d.estimate || 0), 0);
-    u.totalEstimate = totalEstimateFinal;
-    u.estimateDailySummary = estimateDaily;
-    u.dailySummary = daily.map(d => ({
-      date: d.date,
-      spent: d.spent,
-      spent_hm: `${Math.floor(d.spent / 3600)}h ${Math.floor((d.spent % 3600) / 60)}m`,
-      issues: d.issues,
-      issueIids: d.issueIids,
-    }));
-    // ========================================================================================
-    for (const iss of Object.values(u.issues)) {
-      const q = iss.quality || {};
-      const spentDistribution = {};
-      if (iss.spentInRange && iss.byDate) {
-        for (const [date, spent] of Object.entries(iss.byDate)) {
-          if (spent > 0) spentDistribution[date] = spent;
+        // ========================================================================================
+        let realnessScore = 1.0;
+        if (daysBelowMin > 0) realnessScore -= Math.min(0.2, 0.03 * daysBelowMin);
+        if (daysPositive > 0) realnessScore += Math.min(0.12, 0.012 * daysPositive);
+        if (daysFake > 0) realnessScore -= Math.min(0.5, 0.15 * daysFake);
+        const daysExtremeFake = daily.filter(d => d.spent > 12 * H).length;
+        if (daysExtremeFake > 0) realnessScore -= Math.min(0.6, 0.25 * daysExtremeFake);
+        if (largeOneOffSpendsCount > 0) realnessScore -= Math.min(0.4, 0.1 * largeOneOffSpendsCount);
+        if (suspiciousIncrementCount > 0) realnessScore -= Math.min(0.05, 0.01 * suspiciousIncrementCount);
+        realnessScore = Math.max(0, Math.min(1, realnessScore));
+        // ========================================================================================
+        for (const iss of Object.values(u.issues)) {
+            const q = iss.quality || {};
+            const reasons = [];
+            if (q.hasTitle === false) reasons.push('missing_title');
+            if (q.hasDescription === false) reasons.push('missing_description');
+            if (q.spentEqualsEstimate === true) reasons.push('spent_equals_estimate');
+            if (q.spentIsZero === true) reasons.push('no_spent');
+            if (q.estimateIsZero === true) reasons.push('no_estimate');
+            if ((q.labelsCount || 0) <= 3) reasons.push('few_labels');
+            if (q.hasStatusLabel === false) reasons.push('missing_status_label');
+            if ((q.descriptionEditsInRange || 0) >= 3) reasons.push('many_description_edits');
+            const hasBigOneOff = Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0;
+            if (hasBigOneOff) reasons.push('large_one_off_spend');
+            iss.suspiciousReasons = reasons;
+            totalIssueCount += 1;
+            if (reasons.length > 0) suspiciousIssueCount += 1;
         }
-      }
-      // ========================================================================================
-      q.spentDistributionDays = Object.keys(spentDistribution).length;
-      q.descriptionEdits = q.descriptionEditsInRange || 0;
-      const estimate = Number(iss?.time_stats?.time_estimate) || 0;
-      const spentInRange = Number(iss?.spentInRange) || 0;
-      q.spentToEstimateRatio = estimate > 0 ? Number(spentInRange / estimate).toFixed(2) : null;
-      q.commentsInRange = iss.commentsInRange || 0;
-      let qualityScore = 1.0;
-      const qualityPenalties = [];
-      // ========================================================================================
-      if (q.hasTitle === false) {
-        qualityScore -= 0.18;
-        qualityPenalties.push('missing_title');
-      }
-      if (q.hasDescription === false) {
-        qualityScore -= 0.18;
-        qualityPenalties.push('missing_description');
-      }
-      if (q.spentEqualsEstimate === true) {
-        qualityScore -= 0.22;
-        qualityPenalties.push('spent_equals_estimate');
-      }
-      if (q.spentIsZero === true) {
-        qualityScore -= 0.18;
-        qualityPenalties.push('no_spent');
-      }
-      if (q.estimateIsZero === true) {
-        qualityScore -= 0.18;
-        qualityPenalties.push('no_estimate');
-      }
-      if ((q.labelsCount || 0) <= 3) {
-        qualityScore -= 0.12;
-        qualityPenalties.push('few_labels');
-      }
-      if ((q.labelsCount || 0) <= 1) {
-        qualityScore -= 0.1;
-        qualityPenalties.push('very_few_labels');
-      }
-      if (q.hasStatusLabel === false) {
-        qualityScore -= 0.12;
-        qualityPenalties.push('missing_status_label');
-      }
-      if ((q.descriptionEditsInRange || 0) >= 3) {
-        qualityScore -= 0.15;
-        qualityPenalties.push('many_description_edits');
-      }
-      if (Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0) {
-        qualityScore -= 0.22;
-        qualityPenalties.push('large_one_off_spend');
-      }
-      if (q.spentDistributionDays <= 1 && iss.spentInRange > 2 * 3600) {
-        qualityScore -= 0.18;
-        qualityPenalties.push('undistributed_spend');
-      }
-      if (q.spentToEstimateRatio && (q.spentToEstimateRatio < 0.5 || q.spentToEstimateRatio > 1.5)) {
-        qualityScore -= 0.15;
-        qualityPenalties.push('bad_spent_to_estimate_ratio');
-      }
-      if (q.commentsInRange < 1) {
-        qualityScore -= 0.08;
-        qualityPenalties.push('few_comments');
-      }
-      if (qualityPenalties.length >= 3) qualityScore -= 0.15;
-      // ========================================================================================
-      qualityScore = Math.max(0, Math.min(1, qualityScore));
-      q.qualityScore = Number(qualityScore.toFixed(2));
-      q.qualityPenalties = qualityPenalties;
-      let estimateAlignment = 0;
-      if (q.spentToEstimateRatio !== null && q.spentToEstimateRatio !== undefined) {
-        const ratioNum = Number(q.spentToEstimateRatio);
-        if (!Number.isNaN(ratioNum)) {
-          const diff = Math.abs(1 - ratioNum);
-          const alignment = Math.max(0, 1 - Math.min(1, diff));
-          estimateAlignment = Number(alignment.toFixed(2));
+        // ========================================================================================
+        u.totalIssueCount = totalIssueCount;
+        u.suspiciousIssueCount = suspiciousIssueCount;
+        u.realnessPercent = Number((realnessScore * 100).toFixed(2));
+        u.daysBelowMin = daysBelowMin;
+        u.daysAboveMax = daysAboveMax;
+        u.daysFake = daysFake;
+        u.healthyDays = healthyDays;
+        u.totalDays = totalDays;
+        u.activeDays = activeDays;
+        u.fakeDaysDetails = fakeDaysDetails;
+        u.largeOneOffSpendsCount = largeOneOffSpendsCount;
+        u.daysPositive = daysPositive; // 60%..90%
+        u.daysOver90NoPoint = daysOver90NoPoint; // >90%..<=10h
+        u.totalSpent = totalSpent;
+        // ========================================================================================
+        let estimateDaily = workingDateKeys.map(k => {
+            const issuesArr = [];
+            let estSum = 0;
+            for (const iss of Object.values(u.issues || {})) {
+                const v = (iss.estimateByDate && iss.estimateByDate[k]) || 0;
+                if (v > 0) {
+                    issuesArr.push({ iid: iss.iid, seconds: v, hm: `${Math.floor(v / 3600)}h ${Math.floor((v % 3600) / 60)}m` });
+                    estSum += v;
+                }
+            }
+            const issueIids = issuesArr.map(it => it.iid);
+            return {
+                date: k,
+                estimate: estSum,
+                estimate_hm: `${Math.floor(estSum / 3600)}h ${Math.floor((estSum % 3600) / 60)}m`,
+                issues: issuesArr,
+                issueIids,
+            };
+        });
+
+        const totalDailyEst = estimateDaily.reduce((s, d) => s + (d.estimate || 0), 0);
+        if (totalDailyEst === 0 && workingDateKeys.length > 0) {
+            const firstDay = workingDateKeys[0];
+            for (const iss of Object.values(u.issues || {})) {
+                const currentEstimate = Number(iss?.time_stats?.time_estimate || 0);
+                if (!currentEstimate || currentEstimate <= 0) continue;
+                const perDay = iss.byDate || {};
+                const activeDay =
+                    Object.keys(perDay)
+                        .filter(k => workingDateKeys.includes(k) && Number(perDay[k] || 0) > 0)
+                        .sort()[0] || firstDay;
+                const dayObj = estimateDaily.find(d => d.date === activeDay);
+                if (dayObj) {
+                    dayObj.estimate += currentEstimate;
+                    dayObj.estimate_hm = `${Math.floor(dayObj.estimate / 3600)}h ${Math.floor((dayObj.estimate % 3600) / 60)}m`;
+                    dayObj.issues.push({ iid: iss.iid, seconds: currentEstimate, hm: `${Math.floor(currentEstimate / 3600)}h ${Math.floor((currentEstimate % 3600) / 60)}m` });
+                    dayObj.issueIids = Array.from(new Set([...(dayObj.issueIids || []), iss.iid]));
+                }
+            }
         }
-      }
-      q.estimateAlignment = estimateAlignment;
-      iss.quality = q;
-    }
-    // ========================================================================================
-    u.summary = {
-      totalDays: u.totalDays,
-      healthyDays: u.healthyDays,
-      daysBelowMin: u.daysBelowMin,
-      daysAboveMax: u.daysAboveMax,
-      daysFake: u.daysFake,
-      largeOneOffSpendsCount: u.largeOneOffSpendsCount,
-      suspiciousIncrementCount: suspiciousIncrementCount,
-      totalSpent: u.totalSpent,
-      totalEstimate: u.totalEstimate,
-      spentToEstimate: u.totalEstimate > 0 ? Number((u.totalSpent / u.totalEstimate).toFixed(2)) : null,
-      avgDailySpent: u.activeDays > 0 ? Math.round(u.totalSpent / u.activeDays) : 0,
-      realnessPercent: u.realnessPercent,
-      suspiciousIssueCount: u.suspiciousIssueCount,
-      totalIssueCount: u.totalIssueCount,
-      fakeDaysDetails: u.fakeDaysDetails,
-      qualityDistribution: {
-        good: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.8).length,
-        medium: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.5 && iss.quality?.qualityScore < 0.8).length,
-        weak: Object.values(u.issues).filter(iss => iss.quality?.qualityScore < 0.5).length,
-      },
-      largeOneOffSpends: Object.values(u.issues).flatMap(iss => (iss.quality?.largeOneOffSpends || []).map(s => ({ iid: iss.iid, at: s.at, seconds: s.seconds, dateKey: s.dateKey }))),
-    };
-    let guidance = [];
-    // ========================================================================================
-    if (u.absenceCount > 0) {
-      guidance.push(`در ${u.absenceCount} روز (${u.absenceDays.join(', ')}) هیچ فعالیتی ثبت نشده است.`);
-    }
-    if (u.daysFake > 0) {
-      const fakeDates = u.fakeDaysDetails.filter(f => !f.type).map(f => f.date);
-      if (fakeDates.length > 0) guidance.push(`در روزهای ${fakeDates.join(', ')} spend غیرواقعی (بیش از ۱۰ ساعت) ثبت شده است.`);
-      const extremeFakeDates = u.dailySummary.filter(d => d.spent > 12 * 3600).map(d => d.date);
-      if (extremeFakeDates.length > 0) guidance.push(`در روزهای ${extremeFakeDates.join(', ')} spend بسیار غیرواقعی (بیش از ۱۲ ساعت) ثبت شده است.`);
-    }
-    const belowMinDates = u.dailySummary.filter(d => d.spent > 0 && d.spent < targetMin).map(d => d.date);
-    if (belowMinDates.length > 0) guidance.push(`در روزهای ${belowMinDates.join(', ')} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
-    if (u.largeOneOffSpendsCount > 0) guidance.push('چند spend بزرگ یکجا ثبت شده که مشکوک به فیک بودن است.');
-    if (u.suspiciousIncrementCount > 0) guidance.push(`در ${u.suspiciousIncrementCount} مورد افزایش مشکوک spend (۱ ساعت → ۲ ساعت) مشاهده شد.`);
-    if (u.summary.qualityDistribution.weak > 0) guidance.push('برخی ایشوها کیفیت پایینی دارند. لطفاً عنوان، توضیح و برآورد زمانی را کامل‌تر وارد کنید.');
-    if (u.summary.qualityDistribution.good === 0) guidance.push('هیچ ایشوی با کیفیت عالی ثبت نشده است.');
-    if (u.absenceCount === 0) guidance.push('در تمام روزهای کاری این بازه فعالیت ثبت شده است. آفرین!');
-    if (u.summary.qualityDistribution.weak === 0 && u.summary.qualityDistribution.good > 0) guidance.push('تمام ایشوهای شما کیفیت قابل قبولی دارند.');
-    let trend = 'stable';
-    if (u.dailySummary && u.dailySummary.length > 4) {
-      const mid = Math.floor(u.dailySummary.length / 2);
-      const firstHalfSum = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0);
-      const secondHalfSum = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0);
-      const firstHalf = firstHalfSum / (mid || 1);
-      const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
-      const totalSum = firstHalfSum + secondHalfSum;
-      const H = 3600;
-      const minSpendForTrend = 3 * H;
-      const minAbsoluteDelta = 1 * H;
-      if (totalSum >= minSpendForTrend) {
-        if (secondHalf > firstHalf * 1.1 && secondHalf - firstHalf >= minAbsoluteDelta) trend = 'improving';
-        else if (secondHalf < firstHalf * 0.9 && firstHalf - secondHalf >= minAbsoluteDelta) trend = 'declining';
-      }
-    }
-    u.summary.guidance = guidance;
-    u.summary.trend = trend;
-    // ========================================================================================
-    const absenceDays = [];
-    const allDates = workingDateKeys;
-    for (const date of allDates) {
-      const spent = u.byDate && u.byDate[date] ? u.byDate[date] : 0;
-      if (spent === 0) absenceDays.push(date);
-    }
-    u.absenceDays = absenceDays;
-    u.absenceCount = absenceDays.length;
-    // ========================================================================================
-    try {
-      const currentSummary = Array.isArray(u.dailySummary) ? u.dailySummary : [];
-      const currentDates = new Set(currentSummary.map(d => d.date));
-      const expandedDaily = currentSummary.slice();
-      for (const date of allDates) {
-        if (!currentDates.has(date)) {
-          expandedDaily.push({
-            date,
-            spent: 0,
-            spent_hm: '0h 0m',
-            isAbsence: true,
-          });
+        // ========================================================================================
+        const totalEstimateFinal = estimateDaily.reduce((s, d) => s + (d.estimate || 0), 0);
+        u.totalEstimate = totalEstimateFinal;
+        u.estimateDailySummary = estimateDaily;
+        u.dailySummary = daily.map(d => ({
+            date: d.date,
+            spent: d.spent,
+            spent_hm: `${Math.floor(d.spent / 3600)}h ${Math.floor((d.spent % 3600) / 60)}m`,
+            issues: d.issues,
+            issueIids: d.issueIids,
+        }));
+        // ========================================================================================
+        for (const iss of Object.values(u.issues)) {
+            const q = iss.quality || {};
+            const spentDistribution = {};
+            if (iss.spentInRange && iss.byDate) {
+                for (const [date, spent] of Object.entries(iss.byDate)) {
+                    if (spent > 0) spentDistribution[date] = spent;
+                }
+            }
+            // ========================================================================================
+            q.spentDistributionDays = Object.keys(spentDistribution).length;
+            q.descriptionEdits = q.descriptionEditsInRange || 0;
+            const estimate = Number(iss?.time_stats?.time_estimate) || 0;
+            const spentInRange = Number(iss?.spentInRange) || 0;
+            q.spentToEstimateRatio = estimate > 0 ? Number(spentInRange / estimate).toFixed(2) : null;
+            q.commentsInRange = iss.commentsInRange || 0;
+            let qualityScore = 1.0;
+            const qualityPenalties = [];
+            // ========================================================================================
+            if (q.hasTitle === false) {
+                qualityScore -= 0.18;
+                qualityPenalties.push('missing_title');
+            }
+            if (q.hasDescription === false) {
+                qualityScore -= 0.18;
+                qualityPenalties.push('missing_description');
+            }
+            if (q.spentEqualsEstimate === true) {
+                qualityScore -= 0.22;
+                qualityPenalties.push('spent_equals_estimate');
+            }
+            if (q.spentIsZero === true) {
+                qualityScore -= 0.18;
+                qualityPenalties.push('no_spent');
+            }
+            if (q.estimateIsZero === true) {
+                qualityScore -= 0.18;
+                qualityPenalties.push('no_estimate');
+            }
+            if ((q.labelsCount || 0) <= 3) {
+                qualityScore -= 0.12;
+                qualityPenalties.push('few_labels');
+            }
+            if ((q.labelsCount || 0) <= 1) {
+                qualityScore -= 0.1;
+                qualityPenalties.push('very_few_labels');
+            }
+            if (q.hasStatusLabel === false) {
+                qualityScore -= 0.12;
+                qualityPenalties.push('missing_status_label');
+            }
+            if ((q.descriptionEditsInRange || 0) >= 3) {
+                qualityScore -= 0.15;
+                qualityPenalties.push('many_description_edits');
+            }
+            if (Array.isArray(q.largeOneOffSpends) && q.largeOneOffSpends.length > 0) {
+                qualityScore -= 0.22;
+                qualityPenalties.push('large_one_off_spend');
+            }
+            if (q.spentDistributionDays <= 1 && iss.spentInRange > 2 * 3600) {
+                qualityScore -= 0.18;
+                qualityPenalties.push('undistributed_spend');
+            }
+            if (q.spentToEstimateRatio && (q.spentToEstimateRatio < 0.5 || q.spentToEstimateRatio > 1.5)) {
+                qualityScore -= 0.15;
+                qualityPenalties.push('bad_spent_to_estimate_ratio');
+            }
+            if (q.commentsInRange < 1) {
+                qualityScore -= 0.08;
+                qualityPenalties.push('few_comments');
+            }
+            if (qualityPenalties.length >= 3) qualityScore -= 0.15;
+            // ========================================================================================
+            qualityScore = Math.max(0, Math.min(1, qualityScore));
+            q.qualityScore = Number(qualityScore.toFixed(2));
+            q.qualityPenalties = qualityPenalties;
+            let estimateAlignment = 0;
+            if (q.spentToEstimateRatio !== null && q.spentToEstimateRatio !== undefined) {
+                const ratioNum = Number(q.spentToEstimateRatio);
+                if (!Number.isNaN(ratioNum)) {
+                    const diff = Math.abs(1 - ratioNum);
+                    const alignment = Math.max(0, 1 - Math.min(1, diff));
+                    estimateAlignment = Number(alignment.toFixed(2));
+                }
+            }
+            q.estimateAlignment = estimateAlignment;
+            iss.quality = q;
         }
-      }
-      expandedDaily.sort((a, b) => a.date.localeCompare(b.date));
-      u.dailySummary = expandedDaily;
-    } catch (e) {}
-    // ========================================================================================
-    try {
-      const workingDaysCount = allDates.length;
-      u.totalDays = workingDaysCount;
-      if (u.summary) {
-        u.summary.totalDays = workingDaysCount;
-        const newAvg = (u.activeDays || 0) > 0 ? Math.round((u.totalSpent || 0) / (u.activeDays || 1)) : 0;
-        u.summary.avgDailySpent = newAvg;
-      }
-    } catch (e) {}
-    // ========================================================================================
-    try {
-      if (u.dailySummary && u.dailySummary.length > 4) {
-        const mid = Math.floor(u.dailySummary.length / 2);
-        const firstHalfSum = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0);
-        const secondHalfSum = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0);
-        const firstHalf = firstHalfSum / (mid || 1);
-        const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
+        // ========================================================================================
+        u.summary = {
+            totalDays: u.totalDays,
+            healthyDays: u.healthyDays,
+            daysBelowMin: u.daysBelowMin,
+            daysAboveMax: u.daysAboveMax,
+            daysFake: u.daysFake,
+            largeOneOffSpendsCount: u.largeOneOffSpendsCount,
+            suspiciousIncrementCount: suspiciousIncrementCount,
+            totalSpent: u.totalSpent,
+            totalEstimate: u.totalEstimate,
+            spentToEstimate: u.totalEstimate > 0 ? Number((u.totalSpent / u.totalEstimate).toFixed(2)) : null,
+            avgDailySpent: u.activeDays > 0 ? Math.round(u.totalSpent / u.activeDays) : 0,
+            realnessPercent: u.realnessPercent,
+            suspiciousIssueCount: u.suspiciousIssueCount,
+            totalIssueCount: u.totalIssueCount,
+            fakeDaysDetails: u.fakeDaysDetails,
+            qualityDistribution: {
+                good: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.8).length,
+                medium: Object.values(u.issues).filter(iss => iss.quality?.qualityScore >= 0.5 && iss.quality?.qualityScore < 0.8).length,
+                weak: Object.values(u.issues).filter(iss => iss.quality?.qualityScore < 0.5).length,
+            },
+            largeOneOffSpends: Object.values(u.issues).flatMap(iss => (iss.quality?.largeOneOffSpends || []).map(s => ({ iid: iss.iid, at: s.at, seconds: s.seconds, dateKey: s.dateKey }))),
+        };
+        let guidance = [];
+        // ========================================================================================
+        if (u.absenceCount > 0) {
+            guidance.push(`در ${u.absenceCount} روز (${u.absenceDays.join(', ')}) هیچ فعالیتی ثبت نشده است.`);
+        }
+        if (u.daysFake > 0) {
+            const fakeDates = u.fakeDaysDetails.filter(f => !f.type).map(f => f.date);
+            if (fakeDates.length > 0) guidance.push(`در روزهای ${fakeDates.join(', ')} spend غیرواقعی (بیش از ۱۰ ساعت) ثبت شده است.`);
+            const extremeFakeDates = u.dailySummary.filter(d => d.spent > 12 * 3600).map(d => d.date);
+            if (extremeFakeDates.length > 0) guidance.push(`در روزهای ${extremeFakeDates.join(', ')} spend بسیار غیرواقعی (بیش از ۱۲ ساعت) ثبت شده است.`);
+        }
+        const belowMinDates = u.dailySummary.filter(d => d.spent > 0 && d.spent < targetMin).map(d => d.date);
+        if (belowMinDates.length > 0) guidance.push(`در روزهای ${belowMinDates.join(', ')} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
+        if (u.largeOneOffSpendsCount > 0) guidance.push('چند spend بزرگ یکجا ثبت شده که مشکوک به فیک بودن است.');
+        if (u.suspiciousIncrementCount > 0) guidance.push(`در ${u.suspiciousIncrementCount} مورد افزایش مشکوک spend (۱ ساعت → ۲ ساعت) مشاهده شد.`);
+        if (u.summary.qualityDistribution.weak > 0) guidance.push('برخی ایشوها کیفیت پایینی دارند. لطفاً عنوان، توضیح و برآورد زمانی را کامل‌تر وارد کنید.');
+        if (u.summary.qualityDistribution.good === 0) guidance.push('هیچ ایشوی با کیفیت عالی ثبت نشده است.');
+        if (u.absenceCount === 0) guidance.push('در تمام روزهای کاری این بازه فعالیت ثبت شده است. آفرین!');
+        if (u.summary.qualityDistribution.weak === 0 && u.summary.qualityDistribution.good > 0) guidance.push('تمام ایشوهای شما کیفیت قابل قبولی دارند.');
         let trend = 'stable';
-        const H = 3600;
-        const minSpendForTrend = 3 * H;
-        const minAbsoluteDelta = 1 * H;
-        if (firstHalfSum + secondHalfSum >= minSpendForTrend) {
-          if (secondHalf > firstHalf * 1.1 && secondHalf - firstHalf >= minAbsoluteDelta) trend = 'improving';
-          else if (secondHalf < firstHalf * 0.9 && firstHalf - secondHalf >= minAbsoluteDelta) trend = 'declining';
+        if (u.dailySummary && u.dailySummary.length > 4) {
+            const mid = Math.floor(u.dailySummary.length / 2);
+            const firstHalfSum = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0);
+            const secondHalfSum = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0);
+            const firstHalf = firstHalfSum / (mid || 1);
+            const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
+            const totalSum = firstHalfSum + secondHalfSum;
+            const H = 3600;
+            const minSpendForTrend = 3 * H;
+            const minAbsoluteDelta = 1 * H;
+            if (totalSum >= minSpendForTrend) {
+                if (secondHalf > firstHalf * 1.1 && secondHalf - firstHalf >= minAbsoluteDelta) trend = 'improving';
+                else if (secondHalf < firstHalf * 0.9 && firstHalf - secondHalf >= minAbsoluteDelta) trend = 'declining';
+            }
         }
-        if (!u.summary) u.summary = {};
+        u.summary.guidance = guidance;
         u.summary.trend = trend;
-      }
-    } catch (e) {}
-    // ========================================================================================
-    if (!u.summary) u.summary = {};
-    if (!u.summary.guidance) u.summary.guidance = [];
-    for (const date of absenceDays) {
-      u.summary.guidance.push(`در تاریخ ${date} هیچ فعالیتی ثبت نشده است.`);
-    }
-    // ========================================================================================
-    if (u.dailySummary) {
-      for (const day of u.dailySummary) {
-        if (day.spent === 0) continue;
-        if (day.spent < 8 * 3600) {
-          u.summary.guidance.push(`در تاریخ ${day.date} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
-        } else if (day.spent > 9 * 3600) {
-          u.summary.guidance.push(`در تاریخ ${day.date} spend غیرواقعی (بیش از ۹ ساعت) ثبت شده است.`);
+        // ========================================================================================
+        const absenceDays = [];
+        const allDates = workingDateKeys;
+        for (const date of allDates) {
+            const spent = u.byDate && u.byDate[date] ? u.byDate[date] : 0;
+            if (spent === 0) absenceDays.push(date);
         }
-      }
+        u.absenceDays = absenceDays;
+        u.absenceCount = absenceDays.length;
+        // ========================================================================================
+        try {
+            const currentSummary = Array.isArray(u.dailySummary) ? u.dailySummary : [];
+            const currentDates = new Set(currentSummary.map(d => d.date));
+            const expandedDaily = currentSummary.slice();
+            for (const date of allDates) {
+                if (!currentDates.has(date)) {
+                    expandedDaily.push({
+                        date,
+                        spent: 0,
+                        spent_hm: '0h 0m',
+                        isAbsence: true,
+                    });
+                }
+            }
+            expandedDaily.sort((a, b) => a.date.localeCompare(b.date));
+            u.dailySummary = expandedDaily;
+        } catch (e) {}
+        // ========================================================================================
+        try {
+            const workingDaysCount = allDates.length;
+            u.totalDays = workingDaysCount;
+            if (u.summary) {
+                u.summary.totalDays = workingDaysCount;
+                const newAvg = (u.activeDays || 0) > 0 ? Math.round((u.totalSpent || 0) / (u.activeDays || 1)) : 0;
+                u.summary.avgDailySpent = newAvg;
+            }
+        } catch (e) {}
+        // ========================================================================================
+        try {
+            if (u.dailySummary && u.dailySummary.length > 4) {
+                const mid = Math.floor(u.dailySummary.length / 2);
+                const firstHalfSum = u.dailySummary.slice(0, mid).reduce((a, b) => a + b.spent, 0);
+                const secondHalfSum = u.dailySummary.slice(mid).reduce((a, b) => a + b.spent, 0);
+                const firstHalf = firstHalfSum / (mid || 1);
+                const secondHalf = secondHalfSum / (u.dailySummary.length - mid || 1);
+                let trend = 'stable';
+                const H = 3600;
+                const minSpendForTrend = 3 * H;
+                const minAbsoluteDelta = 1 * H;
+                if (firstHalfSum + secondHalfSum >= minSpendForTrend) {
+                    if (secondHalf > firstHalf * 1.1 && secondHalf - firstHalf >= minAbsoluteDelta) trend = 'improving';
+                    else if (secondHalf < firstHalf * 0.9 && firstHalf - secondHalf >= minAbsoluteDelta) trend = 'declining';
+                }
+                if (!u.summary) u.summary = {};
+                u.summary.trend = trend;
+            }
+        } catch (e) {}
+        // ========================================================================================
+        if (!u.summary) u.summary = {};
+        if (!u.summary.guidance) u.summary.guidance = [];
+        for (const date of absenceDays) {
+            u.summary.guidance.push(`در تاریخ ${date} هیچ فعالیتی ثبت نشده است.`);
+        }
+        // ========================================================================================
+        if (u.dailySummary) {
+            for (const day of u.dailySummary) {
+                if (day.spent === 0) continue;
+                if (day.spent < 8 * 3600) {
+                    u.summary.guidance.push(`در تاریخ ${day.date} کمتر از حداقل ساعات کاری spend ثبت شده است.`);
+                } else if (day.spent > 9 * 3600) {
+                    u.summary.guidance.push(`در تاریخ ${day.date} spend غیرواقعی (بیش از ۹ ساعت) ثبت شده است.`);
+                }
+            }
+        }
+        u.summary.absenceDays = absenceDays;
+        u.summary.absenceCount = absenceDays.length;
+        // ========================================================================================
+        for (const iss of Object.values(u.issues)) {
+            if (Array.isArray(iss.suspiciousReasons) && iss.suspiciousReasons.length > 0) {
+                iss.suspiciousReasonsText = iss.suspiciousReasons.map(r => reasonMap[r] || r);
+            } else {
+                iss.suspiciousReasonsText = [];
+            }
+        }
+        // ========================================================================================
+        const realnessScoreBreakdown = (u.realnessPercent || 0) / 100;
+        let qualityScoreBreakdown = 0;
+        let qualityCountBreakdown = 0;
+        for (const iss of Object.values(u.issues)) {
+            if (iss.quality && typeof iss.quality.qualityScore === 'number') {
+                qualityScoreBreakdown += iss.quality.qualityScore;
+                qualityCountBreakdown++;
+            }
+        }
+        // ========================================================================================
+        qualityScoreBreakdown = qualityCountBreakdown > 0 ? qualityScoreBreakdown / qualityCountBreakdown : 0;
+        const absenceRatioBreakdown = 0;
+        let totalScore = Math.max(0, Math.min(1, weights.realness * realnessScoreBreakdown + weights.quality * qualityScoreBreakdown + weights.absence * (1 - absenceRatioBreakdown)));
+        let userEstimateAlignment = 0;
+        let userEstimateAlignmentCount = 0;
+        for (const iss of Object.values(u.issues)) {
+            const q = iss.quality || {};
+            if (typeof q.estimateAlignment === 'number') {
+                userEstimateAlignment += q.estimateAlignment;
+                userEstimateAlignmentCount += 1;
+            }
+        }
+        // ========================================================================================
+        userEstimateAlignment = userEstimateAlignmentCount > 0 ? userEstimateAlignment / userEstimateAlignmentCount : 0;
+        const estimateBonus = Math.min(0.05, 0.05 * userEstimateAlignment);
+        totalScore = Math.min(1, totalScore + estimateBonus);
+        if (!u.summary) u.summary = {};
+        u.summary.scores = {
+            realness: Number(realnessScoreBreakdown.toFixed(2)),
+            quality: Number(qualityScoreBreakdown.toFixed(2)),
+            absence: Number(absenceRatioBreakdown.toFixed(2)),
+            totalScore: Number(totalScore.toFixed(2)),
+            estimateAlignment: Number(userEstimateAlignment.toFixed(2)),
+        };
+        u.summary.weightsUsed = { ...weights };
+        // ========================================================================================
+        if (u.summary && u.summary.trend) {
+            if (u.summary.trend === 'improving') {
+                u.summary.guidance.push('عملکرد شما در روزهای اخیر رو به بهبود است. ادامه دهید!');
+            } else if (u.summary.trend === 'declining') {
+                u.summary.guidance.push('عملکرد شما در روزهای اخیر افت داشته است. لطفاً دقت بیشتری داشته باشید.');
+            }
+        }
+        if (u.summary && typeof u.summary.scores?.estimateAlignment === 'number') {
+            if (u.summary.scores.estimateAlignment >= 0.8) {
+                u.summary.guidance.push('همراستایی خوبی بین زمان برآورد و زمان مصرف‌شده دارید.');
+            } else if (u.summary.scores.estimateAlignment <= 0.3) {
+                u.summary.guidance.push('اختلاف قابل توجهی بین estimate و spent دیده می‌شود. دقت در ثبت زمان را افزایش دهید.');
+            }
+        }
+        if (u.dailySummary && u.dailySummary.length > 0) {
+            const totalSpent = u.dailySummary.reduce((sum, d) => sum + d.spent, 0);
+            const sortedDays = [...u.dailySummary].sort((a, b) => b.spent - a.spent);
+            const top1 = sortedDays[0]?.spent || 0;
+            const top2 = sortedDays[1]?.spent || 0;
+            const top1Percent = totalSpent > 0 ? top1 / totalSpent : 0;
+            const top2Percent = totalSpent > 0 ? (top1 + top2) / totalSpent : 0;
+            u.summary.spendDistribution = {
+                top1Percent: Number((top1Percent * 100).toFixed(1)),
+                top2Percent: Number((top2Percent * 100).toFixed(1)),
+            };
+            if (top1Percent > 0.6) {
+                u.summary.guidance.push('بیش از ۶۰٪ spend شما فقط در یک روز ثبت شده است. لطفاً spend را به صورت منظم‌تر در روزهای مختلف وارد کنید.');
+            } else if (top2Percent > 0.6) {
+                u.summary.guidance.push('بیش از ۶۰٪ spend شما فقط در دو روز ثبت شده است. بهتر است spend را در روزهای بیشتری توزیع کنید.');
+            }
+        }
+        // ========================================================================================
+        const consistentDays = u.dailySummary.filter(d => d.spent >= 7 * 3600 && d.spent <= 9 * 3600).length;
+        const consistencyRatio = u.totalDays > 0 ? consistentDays / u.totalDays : 0;
+        const diversityCount = Object.values(u.issues).filter(iss => iss.spentInRange > 0).length;
+        let collaborationCount = 0;
+        if (u.collaborationNotes) collaborationCount = u.collaborationNotes.length;
+        let bonus = 0;
+        if (consistencyRatio > 0.7) bonus += 0.05;
+        if (diversityCount >= 3) bonus += 0.05;
+        if (collaborationCount >= 2) bonus += 0.05;
+        u.summary.scores.consistency = Number(consistencyRatio.toFixed(2));
+        u.summary.scores.diversity = diversityCount;
+        u.summary.scores.collaboration = collaborationCount;
+        u.summary.scores.totalScore = Math.min(1, u.summary.scores.totalScore + bonus);
+        if (consistencyRatio > 0.7) u.summary.guidance.push('ثبات خوبی در ثبت spend روزانه دارید.');
+        if (diversityCount >= 3) u.summary.guidance.push('روی چند ایشوی مختلف کار کرده‌اید که نشانه تنوع کار است.');
+        if (collaborationCount >= 2) u.summary.guidance.push('در همکاری تیمی (کامنت روی ایشوهای دیگران) فعال بوده‌اید.');
+        // ========================================================================================
     }
-    u.summary.absenceDays = absenceDays;
-    u.summary.absenceCount = absenceDays.length;
-    // ========================================================================================
-    for (const iss of Object.values(u.issues)) {
-      if (Array.isArray(iss.suspiciousReasons) && iss.suspiciousReasons.length > 0) {
-        iss.suspiciousReasonsText = iss.suspiciousReasons.map(r => reasonMap[r] || r);
-      } else {
-        iss.suspiciousReasonsText = [];
-      }
-    }
-    // ========================================================================================
-    const realnessScoreBreakdown = (u.realnessPercent || 0) / 100;
-    let qualityScoreBreakdown = 0;
-    let qualityCountBreakdown = 0;
-    for (const iss of Object.values(u.issues)) {
-      if (iss.quality && typeof iss.quality.qualityScore === 'number') {
-        qualityScoreBreakdown += iss.quality.qualityScore;
-        qualityCountBreakdown++;
-      }
-    }
-    // ========================================================================================
-    qualityScoreBreakdown = qualityCountBreakdown > 0 ? qualityScoreBreakdown / qualityCountBreakdown : 0;
-    const absenceRatioBreakdown = 0;
-    let totalScore = Math.max(0, Math.min(1, weights.realness * realnessScoreBreakdown + weights.quality * qualityScoreBreakdown + weights.absence * (1 - absenceRatioBreakdown)));
-    let userEstimateAlignment = 0;
-    let userEstimateAlignmentCount = 0;
-    for (const iss of Object.values(u.issues)) {
-      const q = iss.quality || {};
-      if (typeof q.estimateAlignment === 'number') {
-        userEstimateAlignment += q.estimateAlignment;
-        userEstimateAlignmentCount += 1;
-      }
-    }
-    // ========================================================================================
-    userEstimateAlignment = userEstimateAlignmentCount > 0 ? userEstimateAlignment / userEstimateAlignmentCount : 0;
-    const estimateBonus = Math.min(0.05, 0.05 * userEstimateAlignment);
-    totalScore = Math.min(1, totalScore + estimateBonus);
-    if (!u.summary) u.summary = {};
-    u.summary.scores = {
-      realness: Number(realnessScoreBreakdown.toFixed(2)),
-      quality: Number(qualityScoreBreakdown.toFixed(2)),
-      absence: Number(absenceRatioBreakdown.toFixed(2)),
-      totalScore: Number(totalScore.toFixed(2)),
-      estimateAlignment: Number(userEstimateAlignment.toFixed(2)),
-    };
-    u.summary.weightsUsed = { ...weights };
-    // ========================================================================================
-    if (u.summary && u.summary.trend) {
-      if (u.summary.trend === 'improving') {
-        u.summary.guidance.push('عملکرد شما در روزهای اخیر رو به بهبود است. ادامه دهید!');
-      } else if (u.summary.trend === 'declining') {
-        u.summary.guidance.push('عملکرد شما در روزهای اخیر افت داشته است. لطفاً دقت بیشتری داشته باشید.');
-      }
-    }
-    if (u.summary && typeof u.summary.scores?.estimateAlignment === 'number') {
-      if (u.summary.scores.estimateAlignment >= 0.8) {
-        u.summary.guidance.push('همراستایی خوبی بین زمان برآورد و زمان مصرف‌شده دارید.');
-      } else if (u.summary.scores.estimateAlignment <= 0.3) {
-        u.summary.guidance.push('اختلاف قابل توجهی بین estimate و spent دیده می‌شود. دقت در ثبت زمان را افزایش دهید.');
-      }
-    }
-    if (u.dailySummary && u.dailySummary.length > 0) {
-      const totalSpent = u.dailySummary.reduce((sum, d) => sum + d.spent, 0);
-      const sortedDays = [...u.dailySummary].sort((a, b) => b.spent - a.spent);
-      const top1 = sortedDays[0]?.spent || 0;
-      const top2 = sortedDays[1]?.spent || 0;
-      const top1Percent = totalSpent > 0 ? top1 / totalSpent : 0;
-      const top2Percent = totalSpent > 0 ? (top1 + top2) / totalSpent : 0;
-      u.summary.spendDistribution = {
-        top1Percent: Number((top1Percent * 100).toFixed(1)),
-        top2Percent: Number((top2Percent * 100).toFixed(1)),
-      };
-      if (top1Percent > 0.6) {
-        u.summary.guidance.push('بیش از ۶۰٪ spend شما فقط در یک روز ثبت شده است. لطفاً spend را به صورت منظم‌تر در روزهای مختلف وارد کنید.');
-      } else if (top2Percent > 0.6) {
-        u.summary.guidance.push('بیش از ۶۰٪ spend شما فقط در دو روز ثبت شده است. بهتر است spend را در روزهای بیشتری توزیع کنید.');
-      }
-    }
-    // ========================================================================================
-    const consistentDays = u.dailySummary.filter(d => d.spent >= 7 * 3600 && d.spent <= 9 * 3600).length;
-    const consistencyRatio = u.totalDays > 0 ? consistentDays / u.totalDays : 0;
-    const diversityCount = Object.values(u.issues).filter(iss => iss.spentInRange > 0).length;
-    let collaborationCount = 0;
-    if (u.collaborationNotes) collaborationCount = u.collaborationNotes.length;
-    let bonus = 0;
-    if (consistencyRatio > 0.7) bonus += 0.05;
-    if (diversityCount >= 3) bonus += 0.05;
-    if (collaborationCount >= 2) bonus += 0.05;
-    u.summary.scores.consistency = Number(consistencyRatio.toFixed(2));
-    u.summary.scores.diversity = diversityCount;
-    u.summary.scores.collaboration = collaborationCount;
-    u.summary.scores.totalScore = Math.min(1, u.summary.scores.totalScore + bonus);
-    if (consistencyRatio > 0.7) u.summary.guidance.push('ثبات خوبی در ثبت spend روزانه دارید.');
-    if (diversityCount >= 3) u.summary.guidance.push('روی چند ایشوی مختلف کار کرده‌اید که نشانه تنوع کار است.');
-    if (collaborationCount >= 2) u.summary.guidance.push('در همکاری تیمی (کامنت روی ایشوهای دیگران) فعال بوده‌اید.');
-    // ========================================================================================
-  }
 }

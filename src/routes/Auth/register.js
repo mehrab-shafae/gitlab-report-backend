@@ -7,31 +7,31 @@ import { User } from '../../model/user.js';
 // }
 
 export async function register(username, password) {
-  try {
-    if (!username || !password) return false;
+    try {
+        if (!username || !password) return false;
 
-    if (username !== adminUser) {
-      const matched = USERS_GIT.find(u => String(u?.username).toLowerCase() === String(username).toLowerCase());
+        if (username !== adminUser) {
+            const matched = USERS_GIT.find(u => String(u?.username).toLowerCase() === String(username).toLowerCase());
 
-      if (!matched) {
+            if (!matched) {
+                return false;
+            }
+        }
+
+        const exists = await User.exists({ username });
+        if (exists) {
+            return true;
+        }
+
+        if (username === adminUser) {
+            await User.create({ username, password, isAdmin: true });
+        } else {
+            await User.create({ username, password });
+        }
+
+        return true;
+    } catch (error) {
+        console.log('[register] error:', error);
         return false;
-      }
     }
-
-    const exists = await User.exists({ username });
-    if (exists) {
-      return true;
-    }
-
-    if (username === adminUser) {
-      await User.create({ username, password, isAdmin: true });
-    } else {
-      await User.create({ username, password });
-    }
-
-    return true;
-  } catch (error) {
-    console.log('[register] error:', error);
-    return false;
-  }
 }

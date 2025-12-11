@@ -16,18 +16,18 @@ export const DEV_MODE = process.env.DEV_MODE === 'true';
 export let USERS_GIT;
 
 (async () => {
-  USERS_GIT = await fetchGitlabUsers();
+    USERS_GIT = await fetchGitlabUsers();
 })();
 
 if (DEV_MODE) {
-  console.log('🔧 Development mode is ENABLED - Token validation bypassed');
+    console.log('🔧 Development mode is ENABLED - Token validation bypassed');
 }
 
 export const originsC = ['http://localhost:3000', process.env.originsCors];
 
 if (!baseUUrl || !token) {
-  throw new Error('GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است');
+    throw new Error('GITLAB_BASE_URL یا GITLAB_TOKEN ست نشده است');
 }
 if (!projectId) {
-  throw new Error('projectId مشخص نیست (query یا .env)');
+    throw new Error('projectId مشخص نیست (query یا .env)');
 }
