@@ -13,7 +13,7 @@
 | `GITLAB_PROJECT_ID` | شناسه پیش‌فرض پروژه برای گزارش‌گیری | `12345` |
 | `GITLAB_GROUP_ID` | در صورت استفاده از `projectId=all` برای دریافت لیست پروژه‌ها | `6789` |
 | `originsCors` | مبدأ مجاز CORS (لیست جداشده با کاما) | `https://app.example.com` |
-| `MONGODB_URI` | اتصال MongoDB | `mongodb://user:pass@host:27017` |
+| `MONGO_URI` | اتصال MongoDB | `mongodb://user:pass@host:27017` |
 | `MONGODB_DB` | نام دیتابیس | `forvest_git` |
 | `JWT_SECRET` | کلید امضای JWT | `strong-secret` |
 | `adminUser` | نام کاربری ادمین که دسترسی کامل دارد | `master` |
@@ -30,7 +30,7 @@
 | مسیر | توضیح | نکات |
 | --- | --- | --- |
 | `src/config.js` | خواندن env و CORS/پارامترهای GitLab | اگر متغیر ضروری ست نباشد، اپلیکیشن boot نمی‌شود. |
-| `src/init.js` | اتصال MongoDB و هندل Shutdown | مقادیر `MONGODB_URI`/`MONGODB_DB` را اینجا تغذیه کنید. |
+| `src/init.js` | اتصال MongoDB و هندل Shutdown | مقادیر `MONGO_URI`/`MONGODB_DB` را اینجا تغذیه کنید. |
 | `Dockerfile` | بیلد ایمیج بر پایه Node 22 | برای تغییر پورت، متغیر `PORT` را در زمان اجرا ست کنید. |
 
 ## چک‌لیست تغییر پیکربندی

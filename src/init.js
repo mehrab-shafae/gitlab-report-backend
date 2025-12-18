@@ -6,7 +6,7 @@ import './asyncHandler.js';
 import mongoose from 'mongoose';
 import { onShutdown } from './shutdown.js';
 
-const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
+const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017';
 const dbName = process.env.MONGODB_DB || 'forvest_git';
 
 (async function () {
