@@ -1,3 +1,5 @@
+// >>> MRB <<< //
+// #### --> MRB <-- ### //
 'use strict';
 
 import ExcelJS from 'exceljs';
@@ -293,3 +295,4 @@ export default async function (results, users, startKey, endKey) {
     console.error('Excel export failed:', ex?.message || ex);
   }
 }
+// #### --> MRB <-- ### //

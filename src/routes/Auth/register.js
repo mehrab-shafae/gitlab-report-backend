@@ -1,3 +1,4 @@
+// #### --> MRB <-- ### //
 import { adminUser, USERS_GIT } from '../../config.js';
 import { User } from '../../model/user.js';
 
@@ -35,3 +36,4 @@ export async function register(username, password) {
     return false;
   }
 }
+// #### --> MRB <-- ### //

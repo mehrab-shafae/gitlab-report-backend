@@ -1,3 +1,5 @@
+// >>> MRB <<< //
+// #### --> MRB <-- ### //
 'use strict';
 
 import auth from '../middleware/auth.js';
@@ -32,3 +34,5 @@ export default function (app) {
 
   app.get('/activity-range', asyncHandler(activity_range));
 }
+// #### --> MRB <-- ### //
+// *** MRB *** //

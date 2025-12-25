@@ -1,3 +1,5 @@
+// >>> MRB <<< //
+// #### --> MRB <-- ### //
 import jwt from 'jsonwebtoken';
 import { adminUser, JWT_SECRET } from '../../config.js';
 import { User } from '../../model/user.js';
@@ -42,3 +44,5 @@ export default async (req, res) => {
     });
   }
 };
+// #### --> MRB <-- ### //
+// *** MRB *** //

@@ -1,3 +1,5 @@
+// *** MRB *** //
+// #### --> MRB <-- ### //
 const getUsers = async function getUsers() {
   const baseUUrl = process.env.GITLAB_BASE_URL;
 
@@ -18,3 +20,5 @@ const getUsers = async function getUsers() {
 };
 
 export default getUsers;
+// #### --> MRB <-- ### //
+// *** MRB *** //

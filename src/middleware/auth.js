@@ -1,3 +1,4 @@
+// #### --> MRB <-- ### //
 import jwt from 'jsonwebtoken';
 import { DEV_MODE, JWT_SECRET, adminUser } from '../config.js';
 import { fetchGitlabUsers } from '../utils.js';
@@ -72,3 +73,5 @@ export default async (req, res, next) => {
     return res.status(500).json({ message: 'خطای داخلی در احراز هویت', error: err?.message || String(err) });
   }
 };
+// #### --> MRB <-- ### //
+// *** MRB *** //

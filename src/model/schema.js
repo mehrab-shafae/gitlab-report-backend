@@ -1,3 +1,5 @@
+// >>> MRB <<< //
+// #### --> MRB <-- ### //
 import mongoose from 'mongoose';
 
 export const userSchema = new mongoose.Schema(
@@ -8,3 +10,5 @@ export const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+// #### --> MRB <-- ### //
+// >>> MRB <<< //

@@ -1,3 +1,5 @@
+// >>> MRB <<< //
+// #### --> MRB <-- ### //
 const handlers = [];
 
 export function onShutdown(fn) {
@@ -31,3 +33,4 @@ process.on('uncaughtException', _e => runShutdown('uncaughtException'));
 process.on('unhandledRejection', _e => runShutdown('unhandledRejection'));
 
 // process.on('exit', () => runShutdown('exit'));
+// #### --> MRB <-- ### //

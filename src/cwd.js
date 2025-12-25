@@ -1,3 +1,5 @@
+// *** MRB *** //
+// #### --> MRB <-- ### //
 import path from 'path';
 
 function cwd(resolvePath, join) {
@@ -6,3 +8,5 @@ function cwd(resolvePath, join) {
 }
 
 global.cwd = cwd;
+// #### --> MRB <-- ### //
+// >>> MRB <<< //

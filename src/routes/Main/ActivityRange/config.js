@@ -1,3 +1,5 @@
+// >>> MRB <<< //
+// #### --> MRB <-- ### //
 'use strict';
 
 //------------------------------------------------------
@@ -13,3 +15,5 @@ export const weights = {
 
 export const attribution = 'shared'.toString().toLowerCase(); // 'author' | 'shared'
 export const NOTES_CONCURRENCY = Math.max(1, 10);
+// #### --> MRB <-- ### //
+// >>> MRB <<< //
