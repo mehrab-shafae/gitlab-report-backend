@@ -45,7 +45,7 @@ export default async (req, res) => {
       if (!isAdd && !isSub) return { seconds: 0, forDate: null };
       let seconds = 0;
       //   let mm;
-      // استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
+      
       const addSubMatchA = lowered.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
       const addSubMatchB = lowered.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+spent|spent\s+time)\s+of\s+(.+?)(?:\.|$)/i);
       const parseSource = addSubMatchA ? addSubMatchA[1] : addSubMatchB ? addSubMatchB[1] : lowered;
@@ -97,7 +97,7 @@ export default async (req, res) => {
           if (deltaSeconds === 0) continue;
 
           const dateKey = forDate || new Date(note.created_at).toISOString().slice(0, 10);
-          // توزیع spend بین assigneeهای issue؛ در صورت نبود، نسبت به author
+          
           const assignees = Array.isArray(issue.assignees) ? issue.assignees : issue.assignee ? [issue.assignee] : [];
           const shareTargets = assignees.length > 0 ? assignees : [note.author];
           const shareCount = shareTargets.length;

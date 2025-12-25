@@ -20,7 +20,7 @@ import util from 'node:util';
       packageJsonPath = searchPath;
       break;
     } catch (_) {
-      // ادامه جستجو
+      
     }
   }
 

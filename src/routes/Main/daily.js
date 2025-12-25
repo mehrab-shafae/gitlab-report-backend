@@ -138,7 +138,7 @@ export default async (req, res) => {
               if (!isAssignee) continue;
 
               const raw = String(note.body);
-              // --- ثبت تغییرات لیبل ---
+              
               const labelAddMatch = raw.match(/added ~"(.+?)"/);
               const labelRemoveMatch = raw.match(/removed ~"(.+?)"/);
               if (labelAddMatch) {
@@ -163,7 +163,7 @@ export default async (req, res) => {
                   body: raw,
                 });
               }
-              // --- پایان ثبت تغییرات لیبل ---
+              
 
               const m1 = raw.match(/(?:deleted|removed)\s+(.+?)\s+of\s+(?:spent\s+time|time\s+spent)\s+(?:from|on|at)\s+(\d{4}-\d{2}-\d{2})/i);
               if (!m1) continue;
@@ -308,7 +308,7 @@ export default async (req, res) => {
               let seconds = 0;
               //     const unitRe = /(\d+)\s*(mo|w|d|h|m|s)\b/gi; // hoisted pattern kept identical for performance
               //     let m;
-              // تلاش برای استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
+              
               const addSubMatchA = body.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
               const addSubMatchB = body.match(/(?:added|subtracted|removed|deleted)\s+(?:time\s+spent|spent\s+time)\s+of\s+(.+?)(?:\.|$)/i);
               const parseSource = addSubMatchA ? addSubMatchA[1] : addSubMatchB ? addSubMatchB[1] : body;

@@ -3,7 +3,7 @@ import { User } from '../../model/user.js';
 
 // const matched = users.find(u => String(u?.username).toLowerCase() === String(claims.username).toLowerCase());
 // if (!matched) {
-// 	return res.status(403).json({ message: 'یوزر اشتباه است یا در GitLab یافت نشد' });
+
 // }
 
 export async function register(username, password) {

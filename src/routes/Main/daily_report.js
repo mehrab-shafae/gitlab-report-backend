@@ -50,7 +50,7 @@ export default async (req, res) => {
       if (!isAdd && !isSub) return { seconds: 0, forDate: null };
       let seconds = 0;
       //   let mm;
-      // استخراج duration دقیق پس از added/subtracted/removed/deleted و هر دو ترتیب عبارت
+      
       const addSubMatch = lowered.match(/(?:added|subtracted|removed|deleted)\s+(.+?)\s+of\s+(?:time\s+spent|spent\s+time)/i);
       const parseSource = addSubMatch ? addSubMatch[1] : lowered;
       //   while ((mm = unitRe.exec(parseSource)) !== null) {
@@ -98,7 +98,7 @@ export default async (req, res) => {
           const targetKey = forDate || noteDate;
           if (targetKey !== targetDate) continue;
 
-          // توزیع بین assigneeها؛ اگر نداشت، روی author
+          
           const assignees = Array.isArray(issue.assignees) ? issue.assignees : issue.assignee ? [issue.assignee] : [];
           const shareTargets = assignees.length > 0 ? assignees : [note.author];
           const shareCount = shareTargets.length;

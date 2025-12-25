@@ -12,13 +12,13 @@ export default async (req, res) => {
       return res.status(400).json({ message: 'milestone و projectId الزامی هستند' });
     }
 
-    // اگر کاربر عادی است، فقط داده‌های خودش را ببیند
+    
     if (!req.auth.isAdmin && req.auth.gitlabUserId) {
-      // اگر userId در query مشخص شده و با کاربر فعلی متفاوت است، خطا
+      
       if (userId && userId !== req.auth.gitlabUserId.toString()) {
         return res.status(403).json({ message: 'شما فقط می‌توانید داده‌های خودتان را مشاهده کنید' });
       }
-      // اگر userId مشخص نشده، خودکار روی کاربر فعلی تنظیم کن
+      
       if (!userId) {
         req.query.userId = req.auth.gitlabUserId.toString();
       }

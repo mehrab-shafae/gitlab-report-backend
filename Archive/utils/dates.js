@@ -1,6 +1,6 @@
 export function subtractWorkingDays(dayjsInstance, workingDays) {
   let daysToSubtract = Number(workingDays) || 0;
-  let cursor = dayjsInstance.clone(); // استفاده از clone برای جلوگیری از تغییر instance اصلی
+  let cursor = dayjsInstance.clone(); 
   while (daysToSubtract > 0) {
     cursor = cursor.subtract(1, 'day');
     const day = cursor.day(); // 0 = Sunday, 6 = Saturday
