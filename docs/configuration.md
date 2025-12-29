@@ -1,39 +1,8 @@
+# پیکربندی — GitLab Report Backend (فشرده)
 
-# راهنمای پیکربندی
-این سند محل و معنی تنظیمات اصلی سرویس را توضیح می‌دهد.
+متغیرهای ضروری:
+- `PORT`, `MONGO_URI`, `NODE_ENV`
+- `GITLAB_API_TOKEN`, `GITLAB_URL` — GitLab connection
+- JWT_SECRET برای protected endpoints
 
-## متغیرهای محیطی
-مقادیر در `.env` (یا متغیرهای محیطی CI/CD) تعریف می‌شوند. حداقل متغیرهای لازم:
-
-| متغیر | توضیح | مقدار نمونه |
-| --- | --- | --- |
-| `PORT` | پورت اجرای API | `9005` |
-| `GITLAB_BASE_URL` | آدرس پایه GitLab | `https://gitlab.com/api/v4` |
-| `GITLAB_TOKEN` | توکن دسترسی خصوصی GitLab | `glpat-...` |
-| `GITLAB_PROJECT_ID` | شناسه پیش‌فرض پروژه برای گزارش‌گیری | `12345` |
-| `GITLAB_GROUP_ID` | در صورت استفاده از `projectId=all` برای دریافت لیست پروژه‌ها | `6789` |
-| `originsCors` | مبدأ مجاز CORS (لیست جداشده با کاما) | `https://app.example.com` |
-| `MONGO_URI` | اتصال MongoDB | `mongodb://user:pass@host:27017` |
-| `MONGODB_DB` | نام دیتابیس | `forvest_git` |
-| `JWT_SECRET` | کلید امضای JWT | `strong-secret` |
-| `adminUser` | نام کاربری ادمین که دسترسی کامل دارد | `master` |
-| `DEV_MODE` | اگر `true` باشد auth دور زده می‌شود (فقط توسعه) | `false` |
-
-> برای GitLab: از مستندات رسمی استفاده کنید تا سطح دسترسی توکن درست تنظیم شود ([GitLab REST API](https://docs.gitlab.com/ee/api/)).
-
-### مدیریت فایل‌های env
-1. فایل `.env` را در مخازن خصوصی یا Secret Manager نگه دارید؛ در مخزن کد قرار ندهید.
-2. مقدار `GITLAB_TOKEN` را فقط روی محیط‌های امن (CI/Production) تزریق کنید.
-3. بعد از تغییر env سرور را ری‌استارت کنید تا مقادیر جدید اعمال شوند.
-
-## فایل‌ها و تنظیمات کلیدی
-| مسیر | توضیح | نکات |
-| --- | --- | --- |
-| `src/config.js` | خواندن env و CORS/پارامترهای GitLab | اگر متغیر ضروری ست نباشد، اپلیکیشن boot نمی‌شود. |
-| `src/init.js` | اتصال MongoDB و هندل Shutdown | مقادیر `MONGO_URI`/`MONGODB_DB` را اینجا تغذیه کنید. |
-| `Dockerfile` | بیلد ایمیج بر پایه Node 22 | برای تغییر پورت، متغیر `PORT` را در زمان اجرا ست کنید. |
-
-## چک‌لیست تغییر پیکربندی
-1. مقدار جدید را در env تنظیم کنید و در جدول بالا مستند نمایید.
-2. در صورت افزودن وابستگی تازه (مثلاً نقش جدید GitLab)، کد `config.js`/`auth.js` را هم‌تراز کنید.
-3. پس از اعمال تغییر، سرویس را ری‌استارت و یک تماس آزمایشی به `/milestones` انجام دهید.
+برای بیشتر اطلاعات نسبت به پیکربندی از فایل‌های محیطی (.env) و config files استفاده کنید.

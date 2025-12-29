@@ -1,34 +1,26 @@
-# Runbook و عملیات
-این راهنما مراحل اجرا، مانیتورینگ و برخورد با خطاها را پوشش می‌دهد.
+# Runbook — GitLab Report Backend (فشرده و خطاها EN+FA)
 
-## راه‌اندازی و اجرا
-| سناریو | مراحل |
-| --- | --- |
-| توسعه محلی | 1) `npm install` 2) `.env` را طبق `docs/configuration.md` تنظیم کنید 3) `npm start` (پورت پیش‌فرض 9005). |
-| اجرای Docker | `docker build -t gitlab-report-backend .` → `docker run -p 9005:9005 --env-file .env gitlab-report-backend`. |
-| ری‌استارت امن | سرویس را متوقف کنید، در صورت لزوم کش/کانکشن‌های باز Mongo را ببندید، مجدداً `npm start`. |
+شروع سریع محلی:
+- `npm install`
+- `npm run build` (اگر TypeScript)
+- اجرا: `npm start` یا `node index.js`
 
-## مانیتورینگ و سلامت
-- **Health دستی**: یک درخواست ساده به `/milestones?projectId=<id>&milestone=<name>` یا `/labels?projectId=<id>` بفرستید و پاسخ JSON را بررسی کنید.
-- **اتصال GitLab**: اگر پاسخ 502 بود، مقدار `GITLAB_BASE_URL` و `GITLAB_TOKEN` را بررسی کنید.
-- **MongoDB**: لاگ `[info] MongoDB connected` در زمان بوت باید دیده شود.
+خطاهای رایج (EN — FA — راه‌حل):
 
-## جدول خطاها و رفع اشکال
-| Status/Code | پیام متداول | اقدام پیشنهادی |
-| --- | --- | --- |
-| `400` | `username و password الزامی هستند` | بدنه `POST /login` را با هر دو فیلد ارسال کنید. |
-| `401` | `توکن ارائه نشده/نامعتبر` یا اعتبار اشتباه در لاگین | هدر `Authorization: Bearer` را تنظیم کنید یا اعتبار ورود را اصلاح کنید. |
-| `403` | `کاربر ... در GitLab یافت نشد` یا دسترسی متقاطع | نام کاربری را در GitLab بسنجید؛ از تغییر `userId` خودداری کنید. |
-| `502` | `خطا در دریافت کاربران GitLab` یا خطای Upstream | توکن/URL GitLab را بررسی و شبکه را چک کنید. |
-| `500` | `خطای داخلی در احراز هویت/گزارش` | لاگ سرور را ببینید؛ ورودی‌ها را محدود و دوباره تلاش کنید. |
+- GitLab API connection failed
+  - English: Cannot reach GitLab or auth failed
+  - فارسی: اتصال GitLab یا اعتبارسنجی ناموفق
+  - حل: بررسی GITLAB_API_TOKEN, GITLAB_URL, network
 
-## ساختار خروجی و نمونه پاسخ
-- موفق: `200 { status: "ok" | undefined, message?, data?, accessToken? }`
-- خطا: `4xx/5xx { message: <شرح خطا>, error? }`
+- Excel export memory error
+  - English: ExcelJS ran out of memory
+  - فارسی: حافظه برای export Excel کافی نیست
+  - حل: batch processing، کاهش بخش export
 
-## چک‌لیست قبل از استقرار
-- envهای GitLab/Mongo/CORS تنظیم شده باشد.
-- دسترسی توکن GitLab حداقل `api` باشد.
-- تست دستی روی `/login` و یک مسیر گزارش (مثلاً `/milestones`) انجام شده باشد.
-- در صورت استفاده از `projectId=all`، مقدار `GITLAB_GROUP_ID` ست شده باشد.
+- MongoDB query failed
+  - English: Report data retrieval error
+  - فارسی: خطا هنگام بازیابی دادهٔ گزارش
+  - حل: بررسی MONGO_URI, query syntax
 
+
+مسئول‌ها: MRB, Forest Backend Team
