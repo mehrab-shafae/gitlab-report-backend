@@ -4,7 +4,7 @@
   "description": "Backend API for GitLab Milestones reporting",
   "main": "src/index.js",
   "type": "module",
-  "author": "MRB, Forest Backend Team",
+  "author": "MRB, Forvest Backend Team",
   "license": "UNLICENSED",
   "scripts": {
     "start": "node ."

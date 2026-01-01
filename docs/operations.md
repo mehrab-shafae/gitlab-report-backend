@@ -23,4 +23,4 @@
   - حل: بررسی MONGO_URI, query syntax
 
 
-مسئول‌ها: MRB, Forest Backend Team
+by: MRB, Forvest Backend Team

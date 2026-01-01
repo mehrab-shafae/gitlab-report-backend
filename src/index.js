@@ -2,7 +2,7 @@
  * GitLab Milestones reporting and Excel export backend
  * 
  * @abstract Core entry point and request orchestrator
- * @copyright 2024 MRB, Forest Backend Team
+ * @copyright 2024 MRB, Forvest Backend Team
  * @author GitLab Report Team
  * @virtual Service initialization and HTTP request handling
  * 
