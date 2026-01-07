@@ -5,10 +5,10 @@
 دیاگرام:
 ```mermaid
 flowchart LR
-  Client -->|HTTP| Report[Report Backend]
-  Report -->|Query| GitLab[GitLab API]
-  Report --> Mongo[MongoDB]
-  Report -->|Export| ExcelJS[ExcelJS]
+  Client -->|HTTP| Report["Report<br/>Backend"]
+  Report -->|Query| GitLab["GitLab<br/>API"]
+  Report --> Mongo["MongoDB"]
+  Report -->|Export| ExcelJS["ExcelJS"]
 ```
 
 فایل‌های مهم: `index.js`/`app.ts`, `package.json`, `swagger.yaml` (در صورت وجود), مدل‌های Mongoose, middleware‌های custom.
